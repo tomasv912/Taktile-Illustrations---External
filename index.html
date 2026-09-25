@@ -794,6 +794,7 @@
 </linearGradient>
 </defs></svg></div>
       <div class="card" id="card-depth"><div class="tag">08 · Depth hand-off</div></div>
+      <div class="card" id="card-merge"><div class="tag">09 · Connect</div></div>
     </div>
 
   </main>
@@ -832,12 +833,13 @@
     scale:  { spin: 180, entry: 200, flip: false },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
     depth:  { size: 130, hold: 0.3, spin: 90 },
+    merge:  { impact: 18, turn: true },
     layout: { cols: 2 },
     preview: false,
   };
   const KEY = 'taktile-motion-external-v1';
   const clone = o => JSON.parse(JSON.stringify(o));
-  const SAVED = ['motion', 'look', 'layout', 'cubes', 'stack', 'slices', 'orbit', 'scale', 'grow', 'depth'];
+  const SAVED = ['motion', 'look', 'layout', 'cubes', 'stack', 'slices', 'orbit', 'scale', 'grow', 'depth', 'merge'];
   let cfg = clone(DEFAULTS);
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
@@ -1648,6 +1650,155 @@
     }
   }
 
+  // ---------- 09: connect — two slabs collide, fuse into one, and tip up ----------
+  // Figma 7795:4932 → 7798:4987 → 7798:5032. A thick slab charges into a thin one. At contact the
+  // thick slab's front face is exactly the thin one's back face, so together they already are
+  // one box (a cube, seen on its side); the only thing left between them is that shared face.
+  // It closes like a zip: a spark runs from the middle out to both ends, sealing the seam behind
+  // it, while the block rings from the impact. Then the cube tips up: the smallest 3D turn that
+  // takes the side view to the upright one (75.9° about an axis close to screen horizontal).
+  // Everything is a pure function of the timeline, so on leave it plays back: the seam reopens
+  // and the slabs pull apart.
+  const MERGE_MS = 3200;                         // the whole move at speed 1×
+  const mergeCard = $('#card-merge');
+  const M_Y = 540, M_THICK0 = 129.945, M_LA = 338, M_LB0 = 510;
+  const M_T1 = D_S - D_THIN;                     // thick slab's depth at contact: together they make a cube
+  const M_LB1 = M_LA + M_T1;                     // thin slab's back face at contact
+  const M_AXIS = (() => { const n = [-0.907, -0.243, -0.344], l = Math.hypot(...n); return n.map(v => v / l); })();
+  const M_TURN = 75.9 * Math.PI / 180;
+  function mergeLayer(id, edges = true) {
+    const layer = document.createElement('div');
+    layer.className = 'layer';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 1080 1080'); svg.setAttribute('fill', 'none'); svg.setAttribute('aria-hidden', 'true');
+    const L = { layer, svg };
+    if (edges) {
+      const blur = document.createElement('div');
+      blur.className = 'blur filled';
+      blur.style.setProperty('--fill-a', '50%');
+      svg.innerHTML = `<defs>${SPIN_EDGES.map((_, k) => `<linearGradient id="${id}g${k}" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#353232"/><stop offset="0.5" stop-color="#353232"/><stop offset="1" stop-color="#353232"/></linearGradient>`).join('')}</defs>
+        ${SPIN_EDGES.map((_, k) => `<line stroke="url(#${id}g${k})"/>`).join('')}<path stroke="#FDFCFC"/>`;
+      layer.append(blur, svg);
+      const grads = [...svg.querySelectorAll('linearGradient')];
+      Object.assign(L, { blur, lines: [...svg.querySelectorAll('line')], grads, stops: grads.map(g => [...g.querySelectorAll('stop')]),
+        outline: svg.querySelector('path'), poly: null, vis: 1 });
+    } else layer.appendChild(svg);
+    mergeCard.appendChild(layer);
+    return L;
+  }
+  const rodrigues = (n, a) => {   // rotation matrix, axis n (unit), angle a
+    const [x, y, z] = n, c = Math.cos(a), s = Math.sin(a), C = 1 - c;
+    return [[c + x * x * C, x * y * C - z * s, x * z * C + y * s], [y * x * C + z * s, c + y * y * C, y * z * C - x * s], [z * x * C - y * s, z * y * C + x * s, c + z * z * C]];
+  };
+  const mv = (M, v) => M.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+  // a box of square section s and depth t lying on its side (as 04/08), centred on (cx, cy),
+  // then turned by R in view space
+  function drawBox(c, cx, cy, s, t, R, o, lineO = o) {
+    const f = n => n.toFixed(2), REST = SPIN_AX[0][2];
+    const view = ([X, Y, Z]) => { const v = [0, 1, 2].map(k => X * SPIN_AX[0][k] + Y * SPIN_AX[1][k] + Z * SPIN_AX[2][k]);
+      return mv(R, [-v[1], v[0], v[2]]); };   // on its side: a quarter turn on screen, then R
+    const half = [s / 2, t / 2, s / 2];
+    const P = [...Array(8)].map((_, i) => view([0, 1, 2].map(b => (i >> b & 1 ? 1 : -1) * half[b])));
+    const S = P.map(([x, y]) => [cx + x, cy + y]);
+    const faceZ = (b, sign) => { const n = [0, 0, 0]; n[b] = sign ? 1 : -1; return view(n)[2]; };
+    c.lines.forEach((ln, k) => {
+      const [i, j, ax] = SPIN_EDGES[k];
+      const w = smooth(Math.min(...[0, 1, 2].filter(b => b !== ax).map(b => faceZ(b, i >> b & 1))) / (0.6 * REST));
+      if (w <= 0.001) { ln.setAttribute('visibility', 'hidden'); return; }
+      ln.removeAttribute('visibility');
+      ln.setAttribute('stroke-opacity', w.toFixed(3));
+      const near = clamp01((1 + (P[i][2] - P[j][2]) / (REST * half[ax] * 2)) / 2), st = c.stops[k];
+      st[0].setAttribute('stop-opacity', near.toFixed(3));
+      st[1].setAttribute('stop-opacity', ax === 1 ? '0.5' : '1');
+      st[2].setAttribute('stop-opacity', (1 - near).toFixed(3));
+      for (const el of [ln, c.grads[k]]) {
+        el.setAttribute('x1', f(S[i][0])); el.setAttribute('y1', f(S[i][1]));
+        el.setAttribute('x2', f(S[j][0])); el.setAttribute('y2', f(S[j][1]));
+      }
+    });
+    const H = hull(S);
+    c.outline.setAttribute('d', 'M' + H.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
+    setMask(c.blur, H);
+    c.poly = H;
+    c.vis = o;
+    c.layer.style.visibility = Math.max(o, lineO) <= 0.001 ? 'hidden' : '';
+    c.blur.style.opacity = o.toFixed(3);
+    c.svg.style.opacity = lineO.toFixed(3);
+  }
+  const mA = mergeLayer('mgA'), mB = mergeLayer('mgB'), mM = mergeLayer('mgM');
+  // the seam: the shared face's two visible edges, each drawn from the middle vertex outward with
+  // a gradient that is sealed (clear) behind the spark and still a line ahead of it; a soft glow
+  // copy carries only the spark
+  const mS = mergeLayer('mgS', false);
+  mS.svg.innerHTML = `<defs><filter id="mgGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    ${[0, 1].map(k => `<linearGradient id="mgS${k}" gradientUnits="userSpaceOnUse">${'<stop/>'.repeat(5)}</linearGradient>
+      <linearGradient id="mgSg${k}" gradientUnits="userSpaceOnUse">${'<stop/>'.repeat(3)}</linearGradient>`).join('')}</defs>
+    ${[0, 1].map(k => `<path class="seam-glow" stroke="url(#mgSg${k})" stroke-width="5" filter="url(#mgGlow)"/><path class="seam" stroke="url(#mgS${k})"/>`).join('')}`;
+  const seamLines = [0, 1].map(k => ({ line: mS.svg.querySelectorAll('.seam')[k], glow: mS.svg.querySelectorAll('.seam-glow')[k],
+    g: mS.svg.querySelector('#mgS' + k), gg: mS.svg.querySelector('#mgSg' + k) }));
+  mS.layer.style.zIndex = 5;
+  function drawSeam(x, p, o) {
+    mS.layer.style.visibility = o <= 0.001 ? 'hidden' : '';
+    if (o <= 0.001) return;
+    mS.svg.style.opacity = o.toFixed(3);
+    const V = [x, M_Y], ends = [[x + D_S / 2, M_Y - D_H], [x + D_S / 2, M_Y + D_H]], f = n => n.toFixed(2);
+    // sealed | spark | line; the spark fades in at the start and burns out at the tips
+    const spark = Math.sin(Math.PI * clamp01(p)), a = Math.max(0, p - 0.22), b = Math.min(1, p + 0.05);
+    const LINE = 'var(--line)', SPARK = 'var(--tint, var(--accent))';
+    const stops = [[0, LINE, p > 0 ? 0 : 1], [a, LINE, p > 0 ? 0 : 1], [p, SPARK, p > 0 ? spark : 1], [b, LINE, 1], [1, LINE, 1]];
+    seamLines.forEach((sl, k) => {
+      const d = `M${f(V[0])} ${f(V[1])}L${f(ends[k][0])} ${f(ends[k][1])}`;
+      sl.line.setAttribute('d', d); sl.glow.setAttribute('d', d);
+      for (const g of [sl.g, sl.gg]) { g.setAttribute('x1', f(V[0])); g.setAttribute('y1', f(V[1])); g.setAttribute('x2', f(ends[k][0])); g.setAttribute('y2', f(ends[k][1])); }
+      [...sl.g.children].forEach((st, i) => { st.setAttribute('offset', stops[i][0].toFixed(3));
+        st.style.stopColor = stops[i][1]; st.style.stopOpacity = stops[i][2].toFixed(3); });
+      [[a, 0], [p, spark * 0.9], [b, 0]].forEach(([off, op], i) => { const st = sl.gg.children[i];
+        st.setAttribute('offset', off.toFixed(3)); st.style.stopColor = SPARK; st.style.stopOpacity = op.toFixed(3); });
+    });
+  }
+  let mT = 0, mV = 0, mHover = false, mPt = null;
+  function renderMerge() {
+    const seg = (a, b) => clamp01((mT - a) / (b - a));
+    const approach = seg(0, 0.34), fuse = seg(0.34, 0.6), turn = cfg.merge.turn ? seg(0.68, 1) : 0;
+    const I3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    if (mT < 0.34) {
+      // the thick slab gathers speed as it grows into the thin one
+      const k = Math.pow(approach, 2.4), tA = lerp(M_THICK0, M_T1, k), LB = lerp(M_LB0, M_LB1, approach);
+      drawBox(mA, M_LA + (D_S + tA) / 2, M_Y, D_S, tA, I3, 1);
+      drawBox(mB, LB + (D_S + D_THIN) / 2, M_Y, D_S, D_THIN, I3, 1);
+      drawBox(mM, M_LA + D_S, M_Y, D_S, D_S, I3, 0);
+      drawSeam(M_LB1, 0, 0);
+      return;
+    }
+    // impact: the block rings (stretches and settles) while the seam zips shut
+    const ring = cfg.merge.impact * Math.sin(3 * Math.PI * fuse) * (1 - fuse) * (1 - fuse) * Math.exp(-1.5 * fuse);
+    const swap = smooth(fuse / 0.12);                     // the two slabs hand over to the one block
+    const zip = seg(0.34 + 0.26 * 0.08, 0.34 + 0.26 * 0.8);
+    const tM = D_S + ring, R = rodrigues(M_AXIS, M_TURN * ease(turn));
+    drawBox(mA, M_LA + (D_S + M_T1) / 2, M_Y, D_S, M_T1, I3, 1 - swap);
+    drawBox(mB, M_LB1 + ring + (D_S + D_THIN) / 2, M_Y, D_S, D_THIN, I3, 1 - swap);
+    // the block's lines are the two slabs' outer lines, so they are there at full strength from
+    // the moment of contact; only its pane crossfades with theirs
+    drawBox(mM, M_LA + (D_S + tM) / 2, M_Y, D_S, tM, R, swap, 1);
+    drawSeam(M_LB1, smooth(zip), 1 - smooth(zip * 6 - 5));   // gone once sealed
+  }
+  const mergeFig = e => { const r = mergeCard.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
+  mergeCard.addEventListener('pointerenter', e => { mHover = true; mPt = mergeFig(e); });
+  mergeCard.addEventListener('pointermove', e => { mPt = mergeFig(e); });
+  mergeCard.addEventListener('pointerleave', () => { mHover = false; mPt = null; });
+  const mergeParts = [mM, mB, mA].map(c => ({ layers: [c.layer], tint: c.stops.flat(), over: p => c.vis > 0.5 && !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
+  function stepMerge(dt) {
+    // plays forward while hovered and holds at the end; plays back on leave. The play speed
+    // eases between forward and back with the shared Start/stop time, so reversing mid-move is smooth.
+    const target = mHover || cfg.preview ? 1 : -1, r = cfg.motion.smoothing;
+    mV = r <= 0 ? target : mV + (target - mV) * (1 - Math.exp(-dt / (r / 3)));
+    const was = mT;
+    mT = reduceMotion.matches ? (target > 0 ? 1 : 0) : clamp01(mT + mV * dt * cfg.motion.speed / MERGE_MS);
+    if (mT !== was) renderMerge();
+    stepPartTint(mergeParts, mPt, dt);
+  }
+
   // ---------- Follow pointer ----------
   // Every stroke near the pointer lights up, fading out by the Radius control, instead of the
   // hovered shape as a whole. The pointer is smoothed, and the effect fades in and out with the
@@ -1761,6 +1912,7 @@
     }
     stepScaleTint(dt);
     stepDepth(dt);
+    stepMerge(dt);
     stepFollow(dt);
     requestAnimationFrame(tick);
   }
@@ -1821,6 +1973,9 @@
     depth:  { note: 'On hover the thick slab hands its depth along to 03 (01 → 02 → 03) and stays; on leave it goes straight back to 01. Depth: how thick it gets; Pause: how long it holds between hand-offs; Spin turns the hovered slab upward, in 90° steps.', fields: [
       { k: 'size', label: 'Depth', min: 60, max: 260, step: 2, fmt: px },
       { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }, SPIN] },
+    merge:  { note: 'Two slabs collide and fuse into one cube; the seam between them zips shut, then the cube tips up. On leave it plays back. Impact: how hard the block rings when they hit.', fields: [
+      { k: 'impact', label: 'Impact', min: 0, max: 60, step: 1, fmt: px },
+      { k: 'turn', type: 'check', label: 'Tip up after merging' }] },
   };
 
   const COLORIZE = '#99C5E1';   // hover tint of the inner edges when Colorize is on
@@ -1837,7 +1992,7 @@
   }
   document.querySelectorAll('#cols button').forEach(b => b.onclick = () => { cfg.layout.cols = +b.dataset.v; save(); applyLayout(); });
 
-  function applyAll() { applyHover(); renderHole(); renderScale(); renderDepth(); applyLook(); applyLayout(); }
+  function applyAll() { applyHover(); renderHole(); renderScale(); renderDepth(); renderMerge(); applyLook(); applyLayout(); }
 
   // one control row: a slider, a checkbox or the curve presets, bound to obj[f.k]
   function fieldRow(f, obj, id) {
@@ -1928,6 +2083,9 @@
         grow: { sizePct: Math.round(cfg.grow.size * 100), pushPx: cfg.grow.push, reachPx: cfg.grow.reach, spinDeg: cfg.grow.spin, motion: 'shared hover spring', push: 'radially away from the hovered cube, smoothstep falloff' },
         depth: { stepMs: Math.round(DEPTH_STEP_MS / cfg.motion.speed), onHover: '01 → 02 → 03, then holds', onLeave: '03 → 01 directly', thickPx: cfg.depth.size, thinPx: +D_THIN.toFixed(1),
           pausePct: Math.round(cfg.depth.hold * 100), spinDeg: cfg.depth.spin, spinDirection: 'up', curve: 'smootherstep + bounce overshoot', both: 'the thick slab thins while the next one thickens, stack width stays the same' },
+        merge: { durationMs: Math.round(MERGE_MS / cfg.motion.speed), phases: { approach: '0–34%', impactAndZip: '34–60%', hold: '60–68%', tipUp: cfg.merge.turn ? '68–100%' : false },
+          impactPx: cfg.merge.impact, tipUp: cfg.merge.turn ? { deg: 75.9, axis: 'close to screen horizontal (smallest turn from side view to upright)' } : false,
+          seam: 'zips shut from the middle out behind a spark', onLeave: 'plays back' },
         cardsPerRow: cfg.layout.cols,
       }, null, 2);
       try { await navigator.clipboard.writeText(txt); $('#toast').textContent = 'Copied to clipboard.'; }
@@ -1963,7 +2121,7 @@
   applyAll();
   requestAnimationFrame(tick);
   // console handle for scrubbing the loop: __motion.seek(0..1)
-  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); }, seekDepth: u => { dU = u; renderDepth(); },
+  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); }, seekDepth: u => { dU = u; renderDepth(); }, seekMerge: t => { mT = t; renderMerge(); },
     // pose a spinning layer at an angle (degrees): __motion.spinAt('stack-layer-3', 45)
     spinAt: (id, deg) => { for (const h of HOVER) { const sp = h.byId[id]; if (sp && sp.spin) { sp.spin.a = sp.spin.target = deg * Math.PI / 180; if (deg % 90) sp.spin.draw(sp.layer.blur); else sp.spin.restore(sp.layer.blur); } } } };
 })();
