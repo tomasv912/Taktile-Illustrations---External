@@ -76,6 +76,12 @@
   /* --tint is set by the Colorize toggle; otherwise the hover tint is the theme's grey */
   .card stop[stop-color="#353232"] { stop-color: color-mix(in srgb, var(--tint, var(--inner-hot)) calc(var(--hot, 0) * 100%), var(--inner)); }
   .card [stroke="#686565"] { stroke: color-mix(in srgb, var(--conn-hot) calc(var(--hot, 0) * 100%), var(--conn)); }
+  /* Follow pointer: highlights are revealed around the pointer instead of per shape. Inner edges
+     take a per-stop amount (--fhot); outlines are painted with a radial gradient centred on the
+     pointer (--spot, one per layer) that blends the tint into the line colour. */
+  :root.follow .card stop[stop-color="#353232"] { stop-color: color-mix(in srgb, var(--tint, var(--inner-hot)) calc(var(--fhot, 0) * 100%), var(--inner)); }
+  :root.follow .card [stroke="#FDFCFC"] { stroke: var(--spot, var(--line)); }
+  .card .spot stop { stop-color: color-mix(in srgb, var(--otint, var(--line)) calc(var(--pres, 0) * var(--w) * 100%), var(--line)); }
   /* stroke and stop colors are driven every frame by the hover/loop motion (--hot), so they get
      no CSS transition: one would lag the highlight behind the movement */
   .card path, .card rect { transition: fill .3s; }
@@ -816,13 +822,13 @@
   const DEFAULTS = {
     // shared by every animation on the page (the side panel)
     motion: { speed: 1, curve: 'butter', bounce: 0, fade: 0.6, smoothing: 350 },
-    look:   { blur: 5, colorize: false, outline: false },
+    look:   { blur: 5, colorize: false, outline: false, follow: false },
     // each card's own parameters (its Customize parameters dropdown)
     cubes:  { strength: 14, influence: 0.45, spin: 90 },
     stack:  { strength: 14, influence: 0.45, spin: 90 },
     slices: { strength: 14, influence: 0.45, spin: 90 },
     orbit:  { strength: 14, influence: 0.45, spin: 90 },
-    scale:  { spin: 180, entry: 200 },
+    scale:  { spin: 180, entry: 200, flip: false },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
     layout: { cols: 2 },
     preview: false,
@@ -930,6 +936,11 @@
   const holeNext = holeSrc.cloneNode(true);
   holeNext.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
   holeNext.id = 'hole-cube-next';
+  holeNext.querySelectorAll('[stroke^="url(#"]').forEach(el => {
+    const g = document.getElementById(el.getAttribute('stroke').slice(5, -1)), copy = g.cloneNode(true);
+    copy.id = g.id + '-next'; g.after(copy);
+    el.setAttribute('stroke', `url(#${copy.id})`);
+  });
   holeSrc.parentNode.insertBefore(holeNext, holeSrc);
 
   ['#card-cubes', '#card-stack', '#card-hole', '#card-slices', '#card-orbit', '#card-grow'].forEach(s => explode($(s)));
@@ -1187,7 +1198,8 @@
         const px = (sp.x * strength * h.u).toFixed(2);
         if (!sp.fixed && sp.drawn !== px) {
           const tf = h.dir === 'right' ? `translate3d(${px}px,0,0)` : `translate3d(0,${-px}px,0)`;
-          sp.moved.forEach(el => el.style.transform = tf);
+          const off = h.dir === 'right' ? [sp.x * strength, 0] : [0, -sp.x * strength];
+          sp.moved.forEach(el => { el.style.transform = tf; el._off = off; });
           sp.drawn = px;
         }
         // hover tint: this layer's inner edges (and its connector, if it has one), on the same
@@ -1267,6 +1279,7 @@
       const tf = `translate3d(calc(${q.x.toFixed(2)} * var(--u)), calc(${q.y.toFixed(2)} * var(--u)), 0) scale(${(1 + q.s * size).toFixed(4)})`;
       if (q.drawn !== tf) {
         q.layer.style.transform = tf;
+        Object.assign(q.layer, { _off: [q.x, q.y], _scale: 1 + q.s * size, _c: q.c });
         q.layer.style.zIndex = q.i + Math.round(Math.max(0, q.s) * 100);   // the growing cube draws on top
         q.drawn = tf;
       }
@@ -1318,6 +1331,7 @@
     c.outline.setAttribute('d', 'M' + hex.map(p).join('L') + 'Z');
     c.depthLine.setAttribute('d', `M${p(hex[4])}L${p(B)}`);
     c.g.setAttribute('transform', `translate(${ox.toFixed(3)} ${oy.toFixed(3)})`);
+    c.layer._off = [ox, oy];
     // the mask shape only changes while the cube is crossing the wall; otherwise just move it
     const key = depth.toFixed(2);
     if (c.maskKey !== key) { setMask(c.layer.blur, hex); c.maskKey = key; }
@@ -1346,7 +1360,7 @@
   const holeBig = layerOf['hole-big-cube'];
   const holeBigPts = points(holeBig.svg.querySelector('path').getAttribute('d'));
   const holeParts = [
-    { layers: cubes.map(c => c.layer), tint: stopsOf(cubes[0].layer), over: p => cubes.some(c => c.poly && inPoly(p, c.poly)) },
+    { layers: cubes.map(c => c.layer), tint: cubes.flatMap(c => stopsOf(c.layer)), over: p => cubes.some(c => c.poly && inPoly(p, c.poly)) },
     { layers: [holeBig], tint: stopsOf(holeBig), over: p => inPoly(p, holeBigPts) },
   ].map(o => ({ ...o, x: 0, drawn: null }));
   // the small cubes paint over the big one, so they come first and win where they overlap
@@ -1504,7 +1518,9 @@
       const y = base === 0 ? entryY : lerp(A.y, B.y, t);
       const sy = lerp(A.s[1], B.s[1], t);
       const o = base === 0 ? Math.min(fadeIn, edgeFade(y, sy)) : base === 3 ? Math.min(fadeOut, edgeFade(y, sy)) : 1;
-      drawScaleCube(c, 540, y, lerp(A.s[0], B.s[0], t), sy, th, o);
+      // Flip: the same conveyor laid on its side, cubes enter on the left and leave on the right
+      if (cfg.scale.flip) drawScaleCube(c, 1080 - y, 540, lerp(A.s[0], B.s[0], t), sy, th, o);
+      else drawScaleCube(c, 540, y, lerp(A.s[0], B.s[0], t), sy, th, o);
     });
   }
   // hover tint per cube: only the cube under the pointer lights up
@@ -1515,6 +1531,66 @@
   scaleCard.addEventListener('pointerleave', () => { scHover = false; scPt = null; });
   const scParts = scaleCubes.map(c => ({ c, layers: [c.layer], tint: c.stops.flat(), over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
   const stepScaleTint = dt => stepPartTint(scParts.sort((a, b) => (b.c.z || 0) - (a.c.z || 0)), scPt, dt);
+
+  // ---------- Follow pointer ----------
+  // Every stroke near the pointer lights up, fading out smoothly by SPOT_R, instead of the
+  // hovered shape as a whole. The pointer is smoothed, and the effect fades in and out with the
+  // hover. Each layer's own offset (_off, _scale, _c) maps the pointer into the layer's space.
+  const SPOT_R = 300;          // Figma px of reach
+  const SPOT_STOPS = [[0, 1], [0.3, 0.85], [0.65, 0.35], [1, 0]];   // outline gradient: offset, strength
+  const followCards = [];
+  let spots = 0;
+  for (const card of document.querySelectorAll('.grid .card')) {
+    const F = { card, p: null, ps: null, pres: 0, idle: true, layers: [] };
+    const fig = e => { const r = card.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
+    card.addEventListener('pointerenter', e => { F.p = fig(e); });
+    card.addEventListener('pointermove', e => { F.p = fig(e); });
+    card.addEventListener('pointerleave', () => { F.p = null; });
+    for (const layer of card.querySelectorAll(':scope > .layer')) {
+      const svg = layer.querySelector(':scope > svg');
+      if (!svg) continue;
+      const grads = [...new Set([...svg.querySelectorAll('[stroke^="url(#"]')]
+        .map(el => document.getElementById(el.getAttribute('stroke').slice(5, -1))).filter(Boolean))];
+      const stops = grads.flatMap(g => [...g.querySelectorAll('stop')].map(st => ({ st, g, off: +(st.getAttribute('offset') || 0), d: null })));
+      let spot = null;
+      if (svg.querySelector('[stroke="#FDFCFC"]')) {
+        const id = 'spot' + ++spots;
+        svg.insertAdjacentHTML('afterbegin', `<defs><radialGradient class="spot" id="${id}" gradientUnits="userSpaceOnUse" r="${SPOT_R}">${
+          SPOT_STOPS.map(([o, w]) => `<stop offset="${o}" style="--w:${w}"/>`).join('')}</radialGradient></defs>`);
+        spot = svg.querySelector('#' + id);
+        layer.style.setProperty('--spot', `url(#${id})`);
+      }
+      if (spot || stops.length) F.layers.push({ layer, stops, spot });
+    }
+    followCards.push(F);
+  }
+  function stepFollow(dt) {
+    if (!cfg.look.follow) return;
+    const tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
+    const a = reduceMotion.matches ? 1 : 1 - Math.exp(-dt / 70);   // pointer smoothing
+    for (const F of followCards) {
+      const target = F.p ? 1 : 0;
+      F.pres = reduceMotion.matches ? target : F.pres + (target - F.pres) * (1 - Math.exp(-dt / tau));
+      if (Math.abs(target - F.pres) < 0.002) F.pres = target;
+      if (F.p) F.ps = F.ps ? [lerp(F.ps[0], F.p[0], a), lerp(F.ps[1], F.p[1], a)] : F.p.slice();
+      if (F.pres === 0 && F.idle) continue;
+      F.idle = F.pres === 0;
+      F.card.style.setProperty('--pres', F.pres.toFixed(3));
+      if (!F.ps) continue;
+      for (const L of F.layers) {
+        const el = L.layer, off = el._off || [0, 0], sc = el._scale || 1, c = el._c || [540, 540];
+        const x = c[0] + (F.ps[0] - off[0] - c[0]) / sc, y = c[1] + (F.ps[1] - off[1] - c[1]) / sc;
+        if (L.spot) { L.spot.setAttribute('cx', x.toFixed(1)); L.spot.setAttribute('cy', y.toFixed(1)); }
+        for (const S of L.stops) {
+          const g = S.g, x1 = +g.getAttribute('x1'), y1 = +g.getAttribute('y1');
+          const sx = x1 + (+g.getAttribute('x2') - x1) * S.off, sy = y1 + (+g.getAttribute('y2') - y1) * S.off;
+          const d = Math.hypot(sx - x, sy - y);
+          const v = (Number.isFinite(d) ? F.pres * falloff(d / SPOT_R) : 0).toFixed(3);
+          if (S.d !== v) { S.st.style.setProperty('--fhot', v); S.d = v; }
+        }
+      }
+    }
+  }
 
   function tick(now) {
     const dt = Math.min(64, now - last); last = now;
@@ -1553,6 +1629,7 @@
       }
     }
     stepScaleTint(dt);
+    stepFollow(dt);
     requestAnimationFrame(tick);
   }
 
@@ -1582,6 +1659,7 @@
       { k: 'blur', label: 'Blur', min: 0, max: 24, step: 1, fmt: v => v + 'px' },
       { k: 'colorize', type: 'check', label: 'Colorize' },
       { k: 'outline', type: 'check', label: 'Colorize outline' },
+      { k: 'follow', type: 'check', label: 'Follow pointer' },
     ]},
   ];
   // Each card's own parameters, in a collapsed dropdown inside the card
@@ -1597,7 +1675,8 @@
     stack:  { note: 'Influence spreads the hover to nearby layers; Spin turns the hovered layer to the right, in 90° steps.', fields: [...LIFT, SPIN] },
     slices: { note: 'Influence spreads the hover to nearby layers; Spin turns the hovered slice upward, in 90° steps.', fields: [...LIFT, SPIN] },
     scale:  { note: 'Spin on the cube’s own axis once it lands in the middle. Entry: how far below the new cube starts, so it comes in with momentum.', fields: [
-      SPIN, { k: 'entry', label: 'Entry', min: 0, max: 400, step: 10, fmt: px }] },
+      SPIN, { k: 'entry', label: 'Entry', min: 0, max: 400, step: 10, fmt: px },
+      { k: 'flip', type: 'check', label: 'Flip horizontal (enter left, leave right)' }] },
     orbit:  { note: 'Influence spreads the hover to nearby satellites; Spin turns the hovered one to the right.', fields: [...LIFT, SPIN] },
     grow:   { note: 'The hovered cube grows by Size and turns by Spin; the others move away from it, Push px at the nearest, fading out by Reach.', fields: [
       { k: 'size',  label: 'Size',  min: 0, max: 1, step: 0.05, fmt: v => '+' + pct(v) },
@@ -1612,6 +1691,7 @@
     root.setProperty('--blur', cfg.look.blur + 'px');
     if (cfg.look.colorize) root.setProperty('--tint', COLORIZE); else root.removeProperty('--tint');
     if (cfg.look.outline) root.setProperty('--otint', COLORIZE); else root.removeProperty('--otint');
+    document.documentElement.classList.toggle('follow', !!cfg.look.follow);
   }
   function applyLayout() {
     document.querySelectorAll('.grid').forEach(g => g.dataset.cols = cfg.layout.cols);
@@ -1696,6 +1776,7 @@
         backgroundBlur: `blur(${cfg.look.blur}px), every layer`,
         hoverTint: cfg.look.colorize ? COLORIZE : 'theme grey',
         hoveredOutline: cfg.look.outline ? `${COLORIZE}, only the shape under the cursor` : 'unchanged',
+        followPointer: cfg.look.follow ? { reachPx: SPOT_R, falloff: 'smoothstep', pointerSmoothingMs: 70 } : false,
         cubes: { ...lift('cubes'), spinDeg: cfg.cubes.spin },
         stack: { ...lift('stack'), spinDeg: cfg.stack.spin, spinDirection: 'right' },
         hole: { loopMs: Math.round(BASE_LOOP_MS / cfg.motion.speed), motion: 'linear' },
@@ -1703,7 +1784,8 @@
         scale: { stepMs: Math.round(SCALE_LOOP_MS / cfg.motion.speed), phases: { move: SCALE_PHASES[0], hold: SCALE_PHASES[1], spin: SCALE_PHASES[2], holdAfter: +(1 - SCALE_PHASES.reduce((a, b) => a + b)).toFixed(2) },
           edgeFade: { goneBeforeEdgePx: EDGE_PAD, fadePx: EDGE_FADE }, spinDeg: cfg.scale.spin, spinAxis: 'own vertical axis, to the right',
           moveCurve: 'sine ease-in-out', maxCubesOnScreen: 3, fadeShareOfHalfStep: cfg.motion.fade,
-          entry: { fromPx: cfg.scale.entry, curve: 'cubic ease-out over the second half of the move' } },
+          entry: { fromPx: cfg.scale.entry, curve: 'cubic ease-out over the second half of the move' },
+          direction: cfg.scale.flip ? 'left to right' : 'bottom to top' },
         orbit: { ...lift('orbit'), spinDeg: cfg.orbit.spin },
         grow: { sizePct: Math.round(cfg.grow.size * 100), pushPx: cfg.grow.push, reachPx: cfg.grow.reach, spinDeg: cfg.grow.spin, motion: 'shared hover spring', push: 'radially away from the hovered cube, smoothstep falloff' },
         cardsPerRow: cfg.layout.cols,
