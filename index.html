@@ -833,7 +833,7 @@
     scale:  { spin: 180, entry: 200, flip: false },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
     depth:  { size: 130, hold: 0.3, spin: 90 },
-    merge:  { impact: 18, turn: true },
+    merge:  { impact: 18, turn: true, short: true },
     layout: { cols: 2 },
     preview: false,
   };
@@ -1655,9 +1655,10 @@
   // thick slab's front face is exactly the thin one's back face, so together they already are
   // one box (a cube, seen on its side); the only thing left between them is that shared face.
   // It closes like a zip: a spark runs from the middle out to both ends, sealing the seam behind
-  // it, while the block rings from the impact. Then the cube turns up: a clean quarter turn in
-  // the screen plane, counter-clockwise, so the face on the right rolls up to the top and the
-  // side view becomes the upright one. Nothing tilts, so no edge appears or disappears.
+  // it, while the block rings from the impact. Then the cube turns in the screen plane until the
+  // side view becomes the upright one: 30° clockwise (a cube looks the same every 120° around
+  // that axis, so 30° right lands where 90° left does), or a quarter turn counter-clockwise, so
+  // the face on the right rolls up to the top. Nothing tilts, so no edge appears or disappears.
   // Everything is a pure function of the timeline, so on leave it plays back: the seam reopens
   // and the slabs pull apart.
   const MERGE_MS = 3200;                         // the whole move at speed 1×
@@ -1772,7 +1773,7 @@
     const ring = cfg.merge.impact * Math.sin(3 * Math.PI * fuse) * (1 - fuse) * (1 - fuse) * Math.exp(-1.5 * fuse);
     const swap = smooth(fuse / 0.12);                     // the two slabs hand over to the one block
     const zip = seg(0.34 + 0.26 * 0.08, 0.34 + 0.26 * 0.8);
-    const tM = D_S + ring, R = rotZ(-M_TURN * ease(turn));
+    const tM = D_S + ring, R = rotZ((cfg.merge.short ? M_TURN / 3 : -M_TURN) * ease(turn));
     drawBox(mA, M_LA + (D_S + M_T1) / 2, M_Y, D_S, M_T1, I3, 1 - swap);
     drawBox(mB, M_LB1 + ring + (D_S + D_THIN) / 2, M_Y, D_S, D_THIN, I3, 1 - swap);
     // the block's lines are the two slabs' outer lines, so they are there at full strength from
@@ -1970,9 +1971,10 @@
     depth:  { note: 'On hover the thick slab hands its depth along to 03 (01 → 02 → 03) and stays; on leave it goes straight back to 01. Depth: how thick it gets; Pause: how long it holds between hand-offs; Spin turns the hovered slab upward, in 90° steps.', fields: [
       { k: 'size', label: 'Depth', min: 60, max: 260, step: 2, fmt: px },
       { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }, SPIN] },
-    merge:  { note: 'Two slabs collide and fuse into one cube; the seam between them zips shut, then the cube turns up a quarter. On leave it plays back. Impact: how hard the block rings when they hit.', fields: [
+    merge:  { note: 'Two slabs collide and fuse into one cube; the seam between them zips shut, then the cube turns upright (30° right, or 90° up). On leave it plays back. Impact: how hard the block rings when they hit.', fields: [
       { k: 'impact', label: 'Impact', min: 0, max: 60, step: 1, fmt: px },
-      { k: 'turn', type: 'check', label: 'Turn up after merging' }] },
+      { k: 'turn', type: 'check', label: 'Turn after merging' },
+      { k: 'short', type: 'check', label: '30° to the right (off: 90° up)' }] },
   };
 
   const COLORIZE = '#99C5E1';   // hover tint of the inner edges when Colorize is on
@@ -2081,7 +2083,7 @@
         depth: { stepMs: Math.round(DEPTH_STEP_MS / cfg.motion.speed), onHover: '01 → 02 → 03, then holds', onLeave: '03 → 01 directly', thickPx: cfg.depth.size, thinPx: +D_THIN.toFixed(1),
           pausePct: Math.round(cfg.depth.hold * 100), spinDeg: cfg.depth.spin, spinDirection: 'up', curve: 'smootherstep + bounce overshoot', both: 'the thick slab thins while the next one thickens, stack width stays the same' },
         merge: { durationMs: Math.round(MERGE_MS / cfg.motion.speed), phases: { approach: '0–34%', impactAndZip: '34–60%', hold: '60–68%', turnUp: cfg.merge.turn ? '68–100%' : false },
-          impactPx: cfg.merge.impact, turnUp: cfg.merge.turn ? { deg: 90, direction: 'counter-clockwise in the screen plane: the right face rolls up to the top' } : false,
+          impactPx: cfg.merge.impact, turnUp: cfg.merge.turn ? (cfg.merge.short ? { deg: 30, direction: 'clockwise in the screen plane' } : { deg: 90, direction: 'counter-clockwise in the screen plane: the right face rolls up to the top' }) : false,
           seam: 'zips shut from the middle out behind a spark', onLeave: 'plays back' },
         cardsPerRow: cfg.layout.cols,
       }, null, 2);
