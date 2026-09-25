@@ -221,6 +221,7 @@
         <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">{{ORBIT}}</svg></div>
       <div class="card" id="card-grow"><div class="tag">07 · Cubes grow</div>
         <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">{{GROW}}</svg></div>
+      <div class="card" id="card-depth"><div class="tag">08 · Depth hand-off (loop)</div></div>
     </div>
 
   </main>
@@ -258,12 +259,13 @@
     orbit:  { strength: 14, influence: 0.45, spin: 90 },
     scale:  { spin: 180, entry: 200, flip: false },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
+    depth:  { size: 130, hold: 0.3 },
     layout: { cols: 2 },
     preview: false,
   };
   const KEY = 'taktile-motion-external-v1';
   const clone = o => JSON.parse(JSON.stringify(o));
-  const SAVED = ['motion', 'look', 'layout', 'cubes', 'stack', 'slices', 'orbit', 'scale', 'grow'];
+  const SAVED = ['motion', 'look', 'layout', 'cubes', 'stack', 'slices', 'orbit', 'scale', 'grow', 'depth'];
   let cfg = clone(DEFAULTS);
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
@@ -960,6 +962,82 @@
   const scParts = scaleCubes.map(c => ({ c, layers: [c.layer], tint: c.stops.flat(), over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
   const stepScaleTint = dt => stepPartTint(scParts.sort((a, b) => (b.c.z || 0) - (a.c.z || 0)), scPt, dt);
 
+  // ---------- 08: depth hand-off — the thick slab passes its depth along the stack ----------
+  // Three slabs drawn like 04 (a stack laid on its side). One is thick; each step it thins to
+  // the others' depth while the next one thickens to its depth, at the same time, so the stack
+  // keeps its overall width: 01 → 02 → 03 → 02 → 01, then again. Geometry from the Figma frames
+  // (7773:4587 / 4605 / 4619): each slab is a rhombus face 200 wide and 346 tall on the right,
+  // plus its depth to the left; later slabs draw on top.
+  const DEPTH_STEP_MS = 1500;                  // one hand-off at speed 1×
+  const depthCard = $('#card-depth');
+  const DSEQ = [0, 1, 2, 1];                   // which slab is thick after each step
+  const D_THIN = 29.945, D_FIG_THICK = 129.945, D_GAPS = [79.5, 99.5], D_LEFT = 216, D_Y = 540.47, D_H = 173;
+  const depthSlabs = [0, 1, 2].map(i => {
+    const layer = document.createElement('div');
+    layer.className = 'layer';
+    const blur = document.createElement('div');
+    blur.className = 'blur filled';
+    blur.style.setProperty('--fill-a', '50%');
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 1080 1080'); svg.setAttribute('fill', 'none'); svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = `<defs>${[0, 1, 2].map(k => `<linearGradient id="dp${i}g${k}" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#353232"/><stop offset="1" stop-color="#353232" stop-opacity="0"/></linearGradient>`).join('')}</defs>
+      ${[0, 1, 2].map(k => `<line stroke="url(#dp${i}g${k})"/>`).join('')}<path stroke="#FDFCFC"/>`;
+    layer.append(blur, svg);
+    depthCard.appendChild(layer);
+    return { layer, blur, svg, lines: [...svg.querySelectorAll('line')], grads: [...svg.querySelectorAll('linearGradient')],
+      stops: [...svg.querySelectorAll('stop')], outline: svg.querySelector('path'), poly: null, key: null };
+  });
+  function drawSlab(c, L, t) {
+    const f = n => n.toFixed(2), Y = D_Y, H = D_H;
+    const hex = [[L, Y], [L + 100, Y - H], [L + 100 + t, Y - H], [L + 200 + t, Y], [L + 100 + t, Y + H], [L + 100, Y + H]];
+    const key = f(L) + '/' + f(t);
+    if (c.key === key) return;
+    c.key = key;
+    c.outline.setAttribute('d', 'M' + hex.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
+    // inner edges run from the face's back corner: up, down, and back along the depth
+    const v = [L + t, Y], ends = [[L + 100 + t, Y - H], [L + 100 + t, Y + H], [L, Y]];
+    c.lines.forEach((ln, k) => {
+      for (const el of [ln, c.grads[k]]) {
+        el.setAttribute('x1', f(v[0])); el.setAttribute('y1', f(v[1]));
+        el.setAttribute('x2', f(ends[k][0])); el.setAttribute('y2', f(ends[k][1]));
+      }
+      ln.setAttribute('visibility', k === 2 && t < 1 ? 'hidden' : 'visible');
+    });
+    setMask(c.blur, hex);
+    c.poly = hex;
+  }
+  let dP = 0, dVel = 0, dHover = false, dRet = null, dPt = null;
+  function renderDepth() {
+    const n = Math.floor(dP), f = dP - n, step = ((n % 4) + 4) % 4;
+    const e = ease(f / Math.max(0.01, 1 - cfg.depth.hold));   // the hand-off, then a pause
+    const a = DSEQ[step], b = DSEQ[(step + 1) % 4], thick = cfg.depth.size;
+    const T = [0, 1, 2].map(i => i === a ? lerp(thick, D_THIN, e) : i === b ? lerp(D_THIN, thick, e) : D_THIN);
+    let L = D_LEFT - (thick - D_FIG_THICK) / 2;   // a different Depth stays centred on the Figma frame
+    depthSlabs.forEach((c, i) => { drawSlab(c, L, T[i]); if (i < 2) L += D_GAPS[i] + (T[i] - D_THIN); });
+  }
+  const depthFig = e => { const r = depthCard.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
+  depthCard.addEventListener('pointerenter', e => { dHover = true; dPt = depthFig(e); });
+  depthCard.addEventListener('pointermove', e => { dPt = depthFig(e); });
+  depthCard.addEventListener('pointerleave', () => { dHover = false; dPt = null; });
+  // hover tint per slab, topmost first
+  const depthParts = [...depthSlabs].reverse().map(c => ({ layers: [c.layer], tint: c.stops, over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
+  function stepDepth(dt) {
+    const sp = cfg.motion.speed, full = sp / (4 * DEPTH_STEP_MS);
+    if (!(dHover || cfg.preview) && (dRet || dVel > 0 || dP % 4 !== 0)) {
+      // Return to rest: finish the cycle, back to the Figma frame with 01 thick
+      if (!dRet) dRet = startGlide(dP / 4, dVel * full, full);
+      dVel = ramp(dVel, false, dt);
+      if (!dRet.done) { glide(dRet, dt); dP = dRet.x * 4; renderDepth(); }
+      if (dRet.done) { dP = ((dP % 4) + 4) % 4; renderDepth(); if (dVel === 0) dRet = null; }
+    } else {
+      if (dRet) { dRet = null; dP = ((dP % 4) + 4) % 4; }
+      dVel = ramp(dVel, dHover || cfg.preview, dt);
+      if (dVel > 0) { dP = (dP + dt * dVel * sp / DEPTH_STEP_MS) % 4; renderDepth(); }
+    }
+    stepPartTint(depthParts, dPt, dt);
+  }
+
   // ---------- Follow pointer ----------
   // Every stroke near the pointer lights up, fading out by the Radius control, instead of the
   // hovered shape as a whole. The pointer is smoothed, and the effect fades in and out with the
@@ -1072,6 +1150,7 @@
       }
     }
     stepScaleTint(dt);
+    stepDepth(dt);
     stepFollow(dt);
     requestAnimationFrame(tick);
   }
@@ -1129,6 +1208,9 @@
       { k: 'push',  label: 'Push',  min: 0, max: 120, step: 2, fmt: px },
       { k: 'reach', label: 'Reach', min: 150, max: 900, step: 10, fmt: px },
       SPIN] },
+    depth:  { note: 'The thick slab hands its depth to the next one: 01 → 02 → 03 → 02 → 01. Depth: how thick it gets; Pause: the share of each step it holds before the next hand-off.', fields: [
+      { k: 'size', label: 'Depth', min: 60, max: 260, step: 2, fmt: px },
+      { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }] },
   };
 
   const COLORIZE = '#99C5E1';   // hover tint of the inner edges when Colorize is on
@@ -1145,7 +1227,7 @@
   }
   document.querySelectorAll('#cols button').forEach(b => b.onclick = () => { cfg.layout.cols = +b.dataset.v; save(); applyLayout(); });
 
-  function applyAll() { applyHover(); renderHole(); renderScale(); applyLook(); applyLayout(); }
+  function applyAll() { applyHover(); renderHole(); renderScale(); renderDepth(); applyLook(); applyLayout(); }
 
   // one control row: a slider, a checkbox or the curve presets, bound to obj[f.k]
   function fieldRow(f, obj, id) {
@@ -1234,6 +1316,8 @@
           direction: cfg.scale.flip ? 'left to right' : 'bottom to top' },
         orbit: { ...lift('orbit'), spinDeg: cfg.orbit.spin },
         grow: { sizePct: Math.round(cfg.grow.size * 100), pushPx: cfg.grow.push, reachPx: cfg.grow.reach, spinDeg: cfg.grow.spin, motion: 'shared hover spring', push: 'radially away from the hovered cube, smoothstep falloff' },
+        depth: { stepMs: Math.round(DEPTH_STEP_MS / cfg.motion.speed), order: '01 → 02 → 03 → 02 → 01', thickPx: cfg.depth.size, thinPx: +D_THIN.toFixed(1),
+          pausePct: Math.round(cfg.depth.hold * 100), curve: 'smootherstep + bounce overshoot', both: 'the thick slab thins while the next one thickens, stack width stays the same' },
         cardsPerRow: cfg.layout.cols,
       }, null, 2);
       try { await navigator.clipboard.writeText(txt); $('#toast').textContent = 'Copied to clipboard.'; }
@@ -1269,7 +1353,7 @@
   applyAll();
   requestAnimationFrame(tick);
   // console handle for scrubbing the loop: __motion.seek(0..1)
-  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); },
+  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); }, seekDepth: v => { dP = v; renderDepth(); },
     // pose a spinning layer at an angle (degrees): __motion.spinAt('stack-layer-3', 45)
     spinAt: (id, deg) => { for (const h of HOVER) { const sp = h.byId[id]; if (sp && sp.spin) { sp.spin.a = sp.spin.target = deg * Math.PI / 180; if (deg % 90) sp.spin.draw(sp.layer.blur); else sp.spin.restore(sp.layer.blur); } } } };
 })();
