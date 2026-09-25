@@ -557,6 +557,33 @@
   }
 
   const falloff = t => t >= 1 ? 0 : 1 - t * t * (3 - 2 * t);
+  const inPoly = ([x, y], P) => {   // even-odd point-in-polygon
+    let inside = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [xi, yi] = P[i], [xj, yj] = P[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  // Hover tint per shape on the loops (03, 05): parts in top-to-bottom paint order; only the
+  // topmost part under the pointer lights up (inner edges and outline), easing in and out
+  function stepPartTint(parts, p, dt) {
+    const tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
+    let taken = false;
+    for (const part of parts) {
+      const on = cfg.preview || (!!p && !taken && part.over(p));
+      taken = taken || on;
+      const target = on ? 1 : 0;
+      part.x = reduceMotion.matches ? target : part.x + (target - part.x) * (1 - Math.exp(-dt / tau));
+      if (Math.abs(target - part.x) < 0.002) part.x = target;
+      const v = part.x.toFixed(3);
+      if (part.drawn !== v) {
+        part.tint.forEach(el => el.style.setProperty('--hot', v));
+        part.layers.forEach(l => l.style.setProperty('--ohot', v));
+        part.drawn = v;
+      }
+    }
+  }
   // outline tint: eases toward 1 on the shape under the cursor only (no Influence spread)
   function outlineTint(o, on, el, dt) {
     const target = on ? 1 : 0, tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
@@ -744,37 +771,14 @@
   holeCard.addEventListener('pointerenter', e => { holeHover = true; holeP = holeFig(e); });
   holeCard.addEventListener('pointermove', e => { holeP = holeFig(e); });
   holeCard.addEventListener('pointerleave', () => { holeHover = false; holeP = null; });
-  const inPoly = ([x, y], P) => {   // even-odd point-in-polygon
-    let inside = false;
-    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
-      const [xi, yi] = P[i], [xj, yj] = P[j];
-      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  };
   const holeBig = layerOf['hole-big-cube'];
   const holeBigPts = points(holeBig.svg.querySelector('path').getAttribute('d'));
   const holeParts = [
     { layers: cubes.map(c => c.layer), tint: stopsOf(cubes[0].layer), over: p => cubes.some(c => c.poly && inPoly(p, c.poly)) },
     { layers: [holeBig], tint: stopsOf(holeBig), over: p => inPoly(p, holeBigPts) },
   ].map(o => ({ ...o, x: 0, drawn: null }));
-  function stepHoleTint(dt) {
-    const tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
-    let taken = false;   // the small cubes paint over the big one, so they win where they overlap
-    for (const part of holeParts) {
-      const on = cfg.preview || (!!holeP && !taken && part.over(holeP));
-      taken = taken || on;
-      const target = on ? 1 : 0;
-      part.x = reduceMotion.matches ? target : part.x + (target - part.x) * (1 - Math.exp(-dt / tau));
-      if (Math.abs(target - part.x) < 0.002) part.x = target;
-      const v = part.x.toFixed(3);
-      if (part.drawn !== v) {
-        part.tint.forEach(el => el.style.setProperty('--hot', v));
-        part.layers.forEach(l => l.style.setProperty('--ohot', v));
-        part.drawn = v;
-      }
-    }
-  }
+  // the small cubes paint over the big one, so they come first and win where they overlap
+  const stepHoleTint = dt => stepPartTint(holeParts, holeP, dt);
 
   // ---------- 05: cube scale — vertical conveyor with a spin on the cube's own axis ----------
   // Four cubes ride five slots up the frame: spawn (fading in) → bottom → middle (big) →
@@ -843,6 +847,7 @@
   });
 
   function drawScaleCube(c, cx, cy, sx, sy, th, o) {
+    c.poly = null;   // hover shape (none while hidden or barely faded in)
     if (o <= 0.001) { c.layer.style.visibility = 'hidden'; return; }
     c.layer.style.visibility = '';
     // spin on the cube's own vertical axis: side faces turn in and out of view
@@ -887,6 +892,8 @@
     c.blur.style.webkitMaskPosition = c.blur.style.maskPosition = `calc(${f(x0)} * var(--u)) calc(${f(y0)} * var(--u))`;
     c.blur.style.opacity = c.svg.style.opacity = o.toFixed(3);
     c.layer.style.zIndex = Math.round(sx * 10);   // the bigger cube draws on top
+    c.z = sx;
+    if (o > 0.3) c.poly = H;
   }
 
   let scP = 0, scVel = 0, scHover = false, scRet = null;
@@ -928,15 +935,20 @@
       drawScaleCube(c, 540, y, lerp(A.s[0], B.s[0], t), sy, th, o);
     });
   }
-  scaleCard.addEventListener('pointerenter', () => scHover = true);
-  scaleCard.addEventListener('pointerleave', () => scHover = false);
+  // hover tint per cube: only the cube under the pointer lights up
+  let scPt = null;
+  const scFig = e => { const r = scaleCard.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
+  scaleCard.addEventListener('pointerenter', e => { scHover = true; scPt = scFig(e); });
+  scaleCard.addEventListener('pointermove', e => { scPt = scFig(e); });
+  scaleCard.addEventListener('pointerleave', () => { scHover = false; scPt = null; });
+  const scParts = scaleCubes.map(c => ({ c, layers: [c.layer], tint: c.stops.flat(), over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
+  const stepScaleTint = dt => stepPartTint(scParts.sort((a, b) => (b.c.z || 0) - (a.c.z || 0)), scPt, dt);
 
   function tick(now) {
     const dt = Math.min(64, now - last); last = now;
     stepHover(dt);
     stepGrow(dt);
     const sp = cfg.motion.speed;
-    const wasScale = scVel;
     const holeOn = holeHover || cfg.preview;
     if (!holeOn && (holeRet || vel > 0 || u !== 0)) {
       // Return to rest: finish the cycle (u = 1 looks the same as u = 0)
@@ -968,7 +980,7 @@
         renderScale();
       }
     }
-    if (scVel !== wasScale) scaleCard.style.setProperty('--hot', scVel.toFixed(3));
+    stepScaleTint(dt);
     requestAnimationFrame(tick);
   }
 
