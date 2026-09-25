@@ -245,8 +245,8 @@
     look:   { blur: 5 },
     // each card's own parameters (its Customize parameters dropdown)
     cubes:  { strength: 14, influence: 0.45, spin: 90 },
-    stack:  { strength: 14, influence: 0.45, turn: false },
-    slices: { strength: 14, influence: 0.45, turn: false },
+    stack:  { strength: 14, influence: 0.45, spin: 90 },
+    slices: { strength: 14, influence: 0.45, spin: 90 },
     orbit:  { strength: 14, influence: 0.45, spin: 90 },
     scale:  { spin: 180, entry: 200 },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
@@ -545,7 +545,7 @@
           h.hit = id;
           // each hover turns this cube one more step to the right
           const r = h.byId[id] && h.byId[id].spin;
-          const o = cfg[h.key], deg = 'turn' in o ? (o.turn ? 90 : 0) : o.spin;
+          const deg = cfg[h.key].spin;
           if (r && deg) r.target += (h.spinSign || 1) * deg * Math.PI / 180;
         });
         g.addEventListener('pointerleave', () => { if (h.hit === id) h.hit = null; });
@@ -955,11 +955,12 @@
     { k: 'strength',  label: 'Strength',  min: 0, max: 60, step: 1, fmt: px },
     { k: 'influence', label: 'Influence', min: 0, max: 1, step: 0.01, fmt: pct },
   ];
-  const SPIN = { k: 'spin', label: 'Spin', min: 0, max: 360, step: 90, fmt: deg };
+  // Spin: how far each hover turns the layer, in quarter turns (90° steps), up to two full turns
+  const SPIN = { k: 'spin', label: 'Spin', min: 0, max: 720, step: 90, fmt: deg };
   const CARD_PARAMS = {
     cubes:  { note: 'Influence spreads the hover to nearby layers; Spin turns the hovered cube to the right.', fields: [...LIFT, SPIN] },
-    stack:  { note: 'Influence spreads the hover to nearby layers.', fields: [...LIFT, { k: 'turn', type: 'check', label: 'Turn 90° to the right' }] },
-    slices: { note: 'Influence spreads the hover to nearby layers.', fields: [...LIFT, { k: 'turn', type: 'check', label: 'Turn 90° upward' }] },
+    stack:  { note: 'Influence spreads the hover to nearby layers; Spin turns the hovered layer to the right, in 90° steps.', fields: [...LIFT, SPIN] },
+    slices: { note: 'Influence spreads the hover to nearby layers; Spin turns the hovered slice upward, in 90° steps.', fields: [...LIFT, SPIN] },
     scale:  { note: 'Spin on the cube’s own axis once it lands in the middle. Entry: how far below the new cube starts, so it comes in with momentum.', fields: [
       SPIN, { k: 'entry', label: 'Entry', min: 0, max: 400, step: 10, fmt: px }] },
     orbit:  { note: 'Influence spreads the hover to nearby satellites; Spin turns the hovered one to the right.', fields: [...LIFT, SPIN] },
@@ -1053,9 +1054,9 @@
           timedMoves: 'smootherstep + bounce overshoot' },
         backgroundBlur: `blur(${cfg.look.blur}px), every layer`,
         cubes: { ...lift('cubes'), spinDeg: cfg.cubes.spin },
-        stack: { ...lift('stack'), turn: cfg.stack.turn ? '90° right' : false },
+        stack: { ...lift('stack'), spinDeg: cfg.stack.spin, spinDirection: 'right' },
         hole: { loopMs: Math.round(BASE_LOOP_MS / cfg.motion.speed), motion: 'linear' },
-        slices: { ...lift('slices'), turn: cfg.slices.turn ? '90° up' : false },
+        slices: { ...lift('slices'), spinDeg: cfg.slices.spin, spinDirection: 'up' },
         scale: { stepMs: Math.round(SCALE_LOOP_MS / cfg.motion.speed), phases: { move: SCALE_PHASES[0], hold: SCALE_PHASES[1], spin: SCALE_PHASES[2], holdAfter: +(1 - SCALE_PHASES.reduce((a, b) => a + b)).toFixed(2) },
           edgeFade: { goneBeforeEdgePx: EDGE_PAD, fadePx: EDGE_FADE }, spinDeg: cfg.scale.spin, spinAxis: 'own vertical axis, to the right',
           moveCurve: 'sine ease-in-out', maxCubesOnScreen: 3, fadeShareOfHalfStep: cfg.motion.fade,
