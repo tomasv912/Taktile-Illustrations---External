@@ -70,7 +70,8 @@
 
   /* Figma colors → theme tokens (CSS beats SVG presentation attributes) */
   .card [fill="#0B0A0A"] { fill: var(--fill); }
-  .card [stroke="#FDFCFC"] { stroke: var(--line); }
+  /* --otint is set by the Colorize outline toggle; --ohot (0..1) is how directly the shape is hovered */
+  .card [stroke="#FDFCFC"] { stroke: color-mix(in srgb, var(--otint, var(--line)) calc(var(--ohot, 0) * 100%), var(--line)); }
   .card [fill="#FDFCFC"] { fill: var(--line); }
   /* --tint is set by the Colorize toggle; otherwise the hover tint is the theme's grey */
   .card stop[stop-color="#353232"] { stop-color: color-mix(in srgb, var(--tint, var(--inner-hot)) calc(var(--hot, 0) * 100%), var(--inner)); }
@@ -243,7 +244,7 @@
   const DEFAULTS = {
     // shared by every animation on the page (the side panel)
     motion: { speed: 1, curve: 'butter', bounce: 0, fade: 0.6, smoothing: 350 },
-    look:   { blur: 5, colorize: false },
+    look:   { blur: 5, colorize: false, outline: false },
     // each card's own parameters (its Customize parameters dropdown)
     cubes:  { strength: 14, influence: 0.45, spin: 90 },
     stack:  { strength: 14, influence: 0.45, spin: 90 },
@@ -514,7 +515,7 @@
       const conn = connLayer ? [...connLayer.svg.querySelectorAll('[stroke="#686565"]')] : [];
       const fixed = isFixed(h, id);
       const spin = fixed ? null : h.spin ? spinRig(layer) : h.spinBox ? boxRig(layer, h.screenRot) : null;
-      return { id, layer, c, fixed, x: 0, v: 0, drawn: null, hot: null, tint: [...stopsOf(layer), ...conn],
+      return { id, layer, c, fixed, x: 0, v: 0, drawn: null, hot: null, oh: 0, ohDrawn: null, tint: [...stopsOf(layer), ...conn],
         moved: connLayer ? [layer, connLayer] : [layer], spin };
     });
     h.byId = Object.fromEntries(h.springs.map(sp => [sp.id, sp]));
@@ -555,7 +556,15 @@
     }
   }
 
-  const falloff = t => t >= 1 ? 0 : 1 - t * t * (3 - 2 * t);   // smoothstep: 1 at the centre → 0 at the edge
+  const falloff = t => t >= 1 ? 0 : 1 - t * t * (3 - 2 * t);
+  // outline tint: eases toward 1 on the shape under the cursor only (no Influence spread)
+  function outlineTint(o, on, el, dt) {
+    const target = on ? 1 : 0, tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
+    o.oh = reduceMotion.matches ? target : o.oh + (target - o.oh) * (1 - Math.exp(-dt / tau));
+    if (Math.abs(target - o.oh) < 0.002) o.oh = target;
+    const v = o.oh.toFixed(3);
+    if (o.ohDrawn !== v) { el.style.setProperty('--ohot', v); o.ohDrawn = v; }
+  }   // smoothstep: 1 at the centre → 0 at the edge
 
   function stepHover(dt) {
     const { response } = CURVES[cfg.motion.curve];
@@ -586,6 +595,7 @@
         // spring as the movement so both land together
         const hot = clamp01(sp.x).toFixed(3);
         if (sp.hot !== hot) { sp.tint.forEach(el => el.style.setProperty('--hot', hot)); sp.hot = hot; }
+        outlineTint(sp, cfg.preview || (h.p && h.hit === sp.id), sp.layer, dt);
         // spin on the same spring settings as the lift
         const r = sp.spin;
         if (r && (r.live || r.a !== r.target)) {
@@ -619,7 +629,7 @@
     layer.style.transformOrigin = `${(c[0] / 10.8).toFixed(3)}% ${(c[1] / 10.8).toFixed(3)}%`;
     const spin = boxRig(layer, false, false);   // cubes turn to the right on hover, as in 01
     return { layer, c, i, d: outline.getAttribute('d'), tint: stopsOf(layer), spin,
-      s: 0, sv: 0, x: 0, xv: 0, y: 0, yv: 0, drawn: null, hot: null };
+      s: 0, sv: 0, x: 0, xv: 0, y: 0, yv: 0, drawn: null, hot: null, oh: 0, ohDrawn: null };
   });
   {   // hit areas at rest, in paint order, so the hovered cube never slides out from under the cursor
     const hits = growCard.querySelector('.hits-svg');
@@ -663,6 +673,7 @@
       }
       const h = clamp01(q.s).toFixed(3);
       if (q.hot !== h) { q.tint.forEach(el => el.style.setProperty('--hot', h)); q.hot = h; }
+      outlineTint(q, hot === q, q.layer, dt);
       // spin on the same spring; at every quarter turn the Figma paths come back
       const r = q.spin;
       if (r.live || r.a !== r.target) {
@@ -949,6 +960,7 @@
     { title: 'BG Blur', note: 'Background blur behind every layer.', key: 'look', fields: [
       { k: 'blur', label: 'Blur', min: 0, max: 24, step: 1, fmt: v => v + 'px' },
       { k: 'colorize', type: 'check', label: 'Colorize' },
+      { k: 'outline', type: 'check', label: 'Colorize outline' },
     ]},
   ];
   // Each card's own parameters, in a collapsed dropdown inside the card
@@ -978,6 +990,7 @@
     const root = document.documentElement.style;
     root.setProperty('--blur', cfg.look.blur + 'px');
     if (cfg.look.colorize) root.setProperty('--tint', COLORIZE); else root.removeProperty('--tint');
+    if (cfg.look.outline) root.setProperty('--otint', COLORIZE); else root.removeProperty('--otint');
   }
   function applyLayout() {
     document.querySelectorAll('.grid').forEach(g => g.dataset.cols = cfg.layout.cols);
@@ -1061,6 +1074,7 @@
           timedMoves: 'smootherstep + bounce overshoot' },
         backgroundBlur: `blur(${cfg.look.blur}px), every layer`,
         hoverTint: cfg.look.colorize ? COLORIZE : 'theme grey',
+        hoveredOutline: cfg.look.outline ? `${COLORIZE}, only the shape under the cursor` : 'unchanged',
         cubes: { ...lift('cubes'), spinDeg: cfg.cubes.spin },
         stack: { ...lift('stack'), spinDeg: cfg.stack.spin, spinDirection: 'right' },
         hole: { loopMs: Math.round(BASE_LOOP_MS / cfg.motion.speed), motion: 'linear' },
