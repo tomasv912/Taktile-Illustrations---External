@@ -2,6 +2,8 @@
 
 Hover-animation prototypes for Taktile's isometric illustrations (external version).
 
+Published preview: https://claude.ai/artifact/Uuheq1CujWzzWozDJxCH86
+
 - The side panel only holds what every animation shares: Motion, BG Blur, Preview.
 - Each card's own settings live in a collapsed **Customize parameters** dropdown inside that card.
 - Loops (03, 05) always return to rest when the pointer leaves.
