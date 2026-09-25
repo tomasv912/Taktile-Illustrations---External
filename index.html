@@ -822,7 +822,7 @@
   const DEFAULTS = {
     // shared by every animation on the page (the side panel)
     motion: { speed: 1, curve: 'butter', bounce: 0, fade: 0.6, smoothing: 350 },
-    look:   { blur: 5, colorize: false, outline: false, follow: false },
+    look:   { blur: 5, colorize: false, outline: false, follow: false, spotR: 300, spotSoft: 1 },
     // each card's own parameters (its Customize parameters dropdown)
     cubes:  { strength: 14, influence: 0.45, spin: 90 },
     stack:  { strength: 14, influence: 0.45, spin: 90 },
@@ -1533,11 +1533,16 @@
   const stepScaleTint = dt => stepPartTint(scParts.sort((a, b) => (b.c.z || 0) - (a.c.z || 0)), scPt, dt);
 
   // ---------- Follow pointer ----------
-  // Every stroke near the pointer lights up, fading out smoothly by SPOT_R, instead of the
+  // Every stroke near the pointer lights up, fading out by the Radius control, instead of the
   // hovered shape as a whole. The pointer is smoothed, and the effect fades in and out with the
   // hover. Each layer's own offset (_off, _scale, _c) maps the pointer into the layer's space.
-  const SPOT_R = 300;          // Figma px of reach
-  const SPOT_STOPS = [[0, 1], [0.3, 0.85], [0.65, 0.35], [1, 0]];   // outline gradient: offset, strength
+  // Radius: Figma px of reach. Blur: the share of the radius that fades out; the rest is a
+  // fully lit core. 100% fades all the way from the pointer.
+  const spotR = () => cfg.look.spotR, spotCore = () => 1 - cfg.look.spotSoft;
+  const spotAmt = d => { const R = spotR(), c = spotCore(); return d <= c * R ? 1 : c >= 1 ? 0 : falloff((d / R - c) / (1 - c)); };
+  // outline gradient stops for the current Blur: offset, strength
+  const spotStops = () => { const c = spotCore(); return [[0, 1], ...[0, 0.25, 0.5, 0.75, 1].map(t => [c + (1 - c) * t, falloff(t)])]; };
+  let spotKey = null;
   const followCards = [];
   let spots = 0;
   for (const card of document.querySelectorAll('.grid .card')) {
@@ -1555,8 +1560,8 @@
       let spot = null;
       if (svg.querySelector('[stroke="#FDFCFC"]')) {
         const id = 'spot' + ++spots;
-        svg.insertAdjacentHTML('afterbegin', `<defs><radialGradient class="spot" id="${id}" gradientUnits="userSpaceOnUse" r="${SPOT_R}">${
-          SPOT_STOPS.map(([o, w]) => `<stop offset="${o}" style="--w:${w}"/>`).join('')}</radialGradient></defs>`);
+        svg.insertAdjacentHTML('afterbegin', `<defs><radialGradient class="spot" id="${id}" gradientUnits="userSpaceOnUse">${
+          '<stop/>'.repeat(6)}</radialGradient></defs>`);
         spot = svg.querySelector('#' + id);
         layer.style.setProperty('--spot', `url(#${id})`);
       }
@@ -1566,6 +1571,16 @@
   }
   function stepFollow(dt) {
     if (!cfg.look.follow) return;
+    const key = spotR() + '/' + spotCore();
+    if (spotKey !== key) {   // Radius or Blur changed: reshape every outline gradient
+      const st = spotStops();
+      for (const F of followCards) for (const L of F.layers) if (L.spot) {
+        L.spot.setAttribute('r', spotR());
+        [...L.spot.children].forEach((el, i) => { el.setAttribute('offset', st[i][0].toFixed(3)); el.style.setProperty('--w', st[i][1].toFixed(3)); });
+      }
+      for (const F of followCards) F.idle = false;   // redraw the inner edges too
+      spotKey = key;
+    }
     const tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
     const a = reduceMotion.matches ? 1 : 1 - Math.exp(-dt / 70);   // pointer smoothing
     for (const F of followCards) {
@@ -1585,7 +1600,7 @@
           const g = S.g, x1 = +g.getAttribute('x1'), y1 = +g.getAttribute('y1');
           const sx = x1 + (+g.getAttribute('x2') - x1) * S.off, sy = y1 + (+g.getAttribute('y2') - y1) * S.off;
           const d = Math.hypot(sx - x, sy - y);
-          const v = (Number.isFinite(d) ? F.pres * falloff(d / SPOT_R) : 0).toFixed(3);
+          const v = (Number.isFinite(d) ? F.pres * spotAmt(d) : 0).toFixed(3);
           if (S.d !== v) { S.st.style.setProperty('--fhot', v); S.d = v; }
         }
       }
@@ -1659,7 +1674,10 @@
       { k: 'blur', label: 'Blur', min: 0, max: 24, step: 1, fmt: v => v + 'px' },
       { k: 'colorize', type: 'check', label: 'Colorize' },
       { k: 'outline', type: 'check', label: 'Colorize outline' },
-      { k: 'follow', type: 'check', label: 'Follow pointer' },
+      { k: 'follow', type: 'check', label: 'Follow pointer', rebuild: true },
+      // only while Follow pointer is on: reach of the reveal, and how much of it is a soft edge
+      { k: 'spotR',    label: 'Radius', min: 80, max: 800, step: 10, fmt: v => v + 'px', when: () => cfg.look.follow },
+      { k: 'spotSoft', label: 'Blur',   min: 0, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + '%', when: () => cfg.look.follow },
     ]},
   ];
   // Each card's own parameters, in a collapsed dropdown inside the card
@@ -1714,7 +1732,7 @@
       });
     } else if (f.type === 'check') {
       row.innerHTML = `<label class="check"><input id="${id}" type="checkbox" ${obj[f.k] ? 'checked' : ''}> ${f.label}</label>`;
-      row.querySelector('input').onchange = e => { obj[f.k] = e.target.checked; save(); applyAll(); };
+      row.querySelector('input').onchange = e => { obj[f.k] = e.target.checked; save(); applyAll(); if (f.rebuild) buildPanel(); };
     } else {
       row.className = 'row';
       row.innerHTML = `<label for="${id}">${f.label}</label>
@@ -1755,7 +1773,7 @@
     panel.innerHTML = '';
     for (const sec of SECTIONS) {
       panel.insertAdjacentHTML('beforeend', `<h2>${sec.title}</h2><p>${sec.note}</p>`);
-      for (const f of sec.fields) panel.appendChild(fieldRow(f, cfg[sec.key], `${sec.key}-${f.k}`));
+      for (const f of sec.fields) if (!f.when || f.when()) panel.appendChild(fieldRow(f, cfg[sec.key], `${sec.key}-${f.k}`));
     }
     panel.insertAdjacentHTML('beforeend', `
       <h2>Preview</h2>
@@ -1776,7 +1794,7 @@
         backgroundBlur: `blur(${cfg.look.blur}px), every layer`,
         hoverTint: cfg.look.colorize ? COLORIZE : 'theme grey',
         hoveredOutline: cfg.look.outline ? `${COLORIZE}, only the shape under the cursor` : 'unchanged',
-        followPointer: cfg.look.follow ? { reachPx: SPOT_R, falloff: 'smoothstep', pointerSmoothingMs: 70 } : false,
+        followPointer: cfg.look.follow ? { radiusPx: cfg.look.spotR, blurPct: Math.round(cfg.look.spotSoft * 100), falloff: 'smoothstep over the blurred share of the radius', pointerSmoothingMs: 70 } : false,
         cubes: { ...lift('cubes'), spinDeg: cfg.cubes.spin },
         stack: { ...lift('stack'), spinDeg: cfg.stack.spin, spinDirection: 'right' },
         hole: { loopMs: Math.round(BASE_LOOP_MS / cfg.motion.speed), motion: 'linear' },
