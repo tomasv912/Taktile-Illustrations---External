@@ -261,7 +261,7 @@
     scale:  { spin: 180, entry: 200, flip: false },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
     depth:  { size: 130, hold: 0.3, spin: 90 },
-    merge:  { impact: 18, spin: 45 },
+    merge:  { impact: 18, spin: 90 },
     layout: { cols: 2 },
     preview: false,
   };
@@ -1084,7 +1084,7 @@
   // one box (a cube, seen on its side); the only thing left between them is that shared face.
   // It closes like a zip: a spark runs from the middle out to both ends, sealing the seam behind
   // it, while the block rings from the impact. Then the cube turns upward on its own axis, the
-  // same turn as 04 and 08 (Spin, 45° by default), with edges fading in and out with their faces.
+  // same turn as 04 and 08 (Spin, 90° by default), with edges fading in and out with their faces.
   // Everything is a pure function of the timeline, so on leave it plays back: the seam reopens
   // and the slabs pull apart.
   const MERGE_MS = 3200;                         // the whole move at speed 1×
@@ -1396,7 +1396,7 @@
       { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }, SPIN] },
     merge:  { note: 'Two slabs collide and fuse into one cube; the seam between them zips shut, then the cube turns upward on its own axis by Spin, like 04 and 08. On leave it plays back. Impact: how hard the block rings when they hit.', fields: [
       { k: 'impact', label: 'Impact', min: 0, max: 60, step: 1, fmt: px },
-      { k: 'spin', label: 'Spin', min: 0, max: 360, step: 15, fmt: deg }] },
+      { k: 'spin', label: 'Spin', min: 0, max: 720, step: 90, fmt: deg }] },
   };
 
   const COLORIZE = '#99C5E1';   // hover tint of the inner edges when Colorize is on
