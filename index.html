@@ -72,7 +72,8 @@
   .card [fill="#0B0A0A"] { fill: var(--fill); }
   .card [stroke="#FDFCFC"] { stroke: var(--line); }
   .card [fill="#FDFCFC"] { fill: var(--line); }
-  .card stop[stop-color="#353232"] { stop-color: color-mix(in srgb, var(--inner-hot) calc(var(--hot, 0) * 100%), var(--inner)); }
+  /* --tint is set by the Colorize toggle; otherwise the hover tint is the theme's grey */
+  .card stop[stop-color="#353232"] { stop-color: color-mix(in srgb, var(--tint, var(--inner-hot)) calc(var(--hot, 0) * 100%), var(--inner)); }
   .card [stroke="#686565"] { stroke: color-mix(in srgb, var(--conn-hot) calc(var(--hot, 0) * 100%), var(--conn)); }
   /* stroke and stop colors are driven every frame by the hover/loop motion (--hot), so they get
      no CSS transition: one would lag the highlight behind the movement */
@@ -814,7 +815,7 @@
   const DEFAULTS = {
     // shared by every animation on the page (the side panel)
     motion: { speed: 1, curve: 'butter', bounce: 0, fade: 0.6, smoothing: 350 },
-    look:   { blur: 5 },
+    look:   { blur: 5, colorize: false },
     // each card's own parameters (its Customize parameters dropdown)
     cubes:  { strength: 14, influence: 0.45, spin: 90 },
     stack:  { strength: 14, influence: 0.45, spin: 90 },
@@ -1519,6 +1520,7 @@
     ]},
     { title: 'BG Blur', note: 'Background blur behind every layer.', key: 'look', fields: [
       { k: 'blur', label: 'Blur', min: 0, max: 24, step: 1, fmt: v => v + 'px' },
+      { k: 'colorize', type: 'check', label: 'Colorize' },
     ]},
   ];
   // Each card's own parameters, in a collapsed dropdown inside the card
@@ -1543,7 +1545,12 @@
       SPIN] },
   };
 
-  function applyLook() { document.documentElement.style.setProperty('--blur', cfg.look.blur + 'px'); }
+  const COLORIZE = '#99C5E1';   // hover tint of the inner edges when Colorize is on
+  function applyLook() {
+    const root = document.documentElement.style;
+    root.setProperty('--blur', cfg.look.blur + 'px');
+    if (cfg.look.colorize) root.setProperty('--tint', COLORIZE); else root.removeProperty('--tint');
+  }
   function applyLayout() {
     document.querySelectorAll('.grid').forEach(g => g.dataset.cols = cfg.layout.cols);
     document.querySelectorAll('#cols button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.v === cfg.layout.cols));
@@ -1625,6 +1632,7 @@
           hoverSpring: { responseS: +(CURVES[cfg.motion.curve].response / cfg.motion.speed).toFixed(3), damping: +damping().toFixed(3) },
           timedMoves: 'smootherstep + bounce overshoot' },
         backgroundBlur: `blur(${cfg.look.blur}px), every layer`,
+        hoverTint: cfg.look.colorize ? COLORIZE : 'theme grey',
         cubes: { ...lift('cubes'), spinDeg: cfg.cubes.spin },
         stack: { ...lift('stack'), spinDeg: cfg.stack.spin, spinDirection: 'right' },
         hole: { loopMs: Math.round(BASE_LOOP_MS / cfg.motion.speed), motion: 'linear' },
