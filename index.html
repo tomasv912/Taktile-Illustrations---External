@@ -793,7 +793,7 @@
 <stop offset="1" stop-color="#353232" stop-opacity="0"/>
 </linearGradient>
 </defs></svg></div>
-      <div class="card" id="card-depth"><div class="tag">08 · Depth hand-off (loop)</div></div>
+      <div class="card" id="card-depth"><div class="tag">08 · Depth hand-off</div></div>
     </div>
 
   </main>
@@ -1535,14 +1535,14 @@
   const stepScaleTint = dt => stepPartTint(scParts.sort((a, b) => (b.c.z || 0) - (a.c.z || 0)), scPt, dt);
 
   // ---------- 08: depth hand-off — the thick slab passes its depth along the stack ----------
-  // Three slabs drawn like 04 (a stack laid on its side). One is thick; each step it thins to
-  // the others' depth while the next one thickens to its depth, at the same time, so the stack
-  // keeps its overall width: 01 → 02 → 03 → 02 → 01, then again. Geometry from the Figma frames
+  // Three slabs drawn like 04 (a stack laid on its side). One is thick; on hover it thins to the
+  // others' depth while the next one thickens to its depth, at the same time, so the stack keeps
+  // its overall width: 01 → 02 → 03, and it stays there. On leave 03 hands its depth straight
+  // back to 01 (the Figma frame at rest). Geometry from the Figma frames
   // (7773:4587 / 4605 / 4619): each slab is a rhombus face 200 wide and 346 tall on the right,
   // plus its depth to the left; later slabs draw on top.
-  const DEPTH_STEP_MS = 1500;                  // one hand-off at speed 1×
+  const DEPTH_STEP_MS = 1500;                  // one hand-off plus its pause, at speed 1×
   const depthCard = $('#card-depth');
-  const DSEQ = [0, 1, 2, 1];                   // which slab is thick after each step
   const D_THIN = 29.945, D_FIG_THICK = 129.945, D_GAPS = [79.5, 99.5], D_LEFT = 216, D_Y = 540.47, D_H = 173;
   const depthSlabs = [0, 1, 2].map(i => {
     const layer = document.createElement('div');
@@ -1599,13 +1599,11 @@
     setMask(c.blur, H);
     c.poly = H;
   }
-  let dP = 0, dVel = 0, dHover = false, dRet = null, dPt = null, dTop = null;
+  // dU: how thick each slab is, 0 (thin) … 1 (thick at the Depth control)
+  let dU = [1, 0, 0], dQ = [], dMove = null, dWait = 0, dWasOn = false, dHover = false, dPt = null, dTop = null;
   function renderDepth() {
-    const n = Math.floor(dP), f = dP - n, step = ((n % 4) + 4) % 4;
-    const e = ease(f / Math.max(0.01, 1 - cfg.depth.hold));   // the hand-off, then a pause
-    const a = DSEQ[step], b = DSEQ[(step + 1) % 4], thick = cfg.depth.size;
-    const T = [0, 1, 2].map(i => i === a ? lerp(thick, D_THIN, e) : i === b ? lerp(D_THIN, thick, e) : D_THIN);
-    let L = D_LEFT - (thick - D_FIG_THICK) / 2;   // a different Depth stays centred on the Figma frame
+    const T = dU.map(v => lerp(D_THIN, cfg.depth.size, v));
+    let L = D_LEFT - (cfg.depth.size - D_FIG_THICK) / 2;   // a different Depth stays centred on the Figma frame
     depthSlabs.forEach((c, i) => { drawSlab(c, L, T[i], c.a); if (i < 2) L += D_GAPS[i] + (T[i] - D_THIN); });
   }
   const depthFig = e => { const r = depthCard.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
@@ -1615,17 +1613,24 @@
   // hover tint per slab, topmost first
   const depthParts = [...depthSlabs].reverse().map(c => ({ layers: [c.layer], tint: c.stops.flat(), over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
   function stepDepth(dt) {
-    const sp = cfg.motion.speed, full = sp / (4 * DEPTH_STEP_MS);
-    if (!(dHover || cfg.preview) && (dRet || dVel > 0 || dP % 4 !== 0)) {
-      // Return to rest: finish the cycle, back to the Figma frame with 01 thick
-      if (!dRet) dRet = startGlide(dP / 4, dVel * full, full);
-      dVel = ramp(dVel, false, dt);
-      if (!dRet.done) { glide(dRet, dt); dP = dRet.x * 4; renderDepth(); }
-      if (dRet.done) { dP = ((dP % 4) + 4) % 4; renderDepth(); if (dVel === 0) dRet = null; }
-    } else {
-      if (dRet) { dRet = null; dP = ((dP % 4) + 4) % 4; }
-      dVel = ramp(dVel, dHover || cfg.preview, dt);
-      if (dVel > 0) { dP = (dP + dt * dVel * sp / DEPTH_STEP_MS) % 4; renderDepth(); }
+    const sp = cfg.motion.speed, on = dHover || cfg.preview;
+    if (on !== dWasOn) {
+      dWasOn = on; dMove = null; dWait = 0;
+      // hover: hand the depth on to 03, one slab at a time, from wherever it is now;
+      // leave: straight back to 01
+      const thick = dU.indexOf(Math.max(...dU));
+      dQ = on ? [0, 1, 2].filter(i => i > thick || (i === thick && dU[i] < 0.999)) : [0];
+    }
+    if (!dMove && dQ.length) {
+      if (dWait > 0) dWait -= dt * sp;
+      else { const i = dQ.shift(); dMove = { from: dU.slice(), to: [0, 1, 2].map(j => +(j === i)), e: 0 }; }
+    }
+    if (dMove) {
+      dMove.e = reduceMotion.matches ? 1 : dMove.e + dt * sp / (DEPTH_STEP_MS * (1 - cfg.depth.hold));
+      const k = ease(dMove.e);
+      dU = dMove.from.map((v, j) => lerp(v, dMove.to[j], k));
+      if (dMove.e >= 1) { dU = dMove.to; dMove = null; dWait = cfg.depth.hold * DEPTH_STEP_MS; }   // pause before the next hand-off
+      renderDepth();
     }
     stepPartTint(depthParts, dPt, dt);
     // Spin: each time the pointer moves onto a slab it turns upward (as in 04), on the hover spring
@@ -1813,7 +1818,7 @@
       { k: 'push',  label: 'Push',  min: 0, max: 120, step: 2, fmt: px },
       { k: 'reach', label: 'Reach', min: 150, max: 900, step: 10, fmt: px },
       SPIN] },
-    depth:  { note: 'The thick slab hands its depth to the next one: 01 → 02 → 03 → 02 → 01. Depth: how thick it gets; Pause: the share of each step it holds before the next hand-off; Spin turns the hovered slab upward, in 90° steps.', fields: [
+    depth:  { note: 'On hover the thick slab hands its depth along to 03 (01 → 02 → 03) and stays; on leave it goes straight back to 01. Depth: how thick it gets; Pause: how long it holds between hand-offs; Spin turns the hovered slab upward, in 90° steps.', fields: [
       { k: 'size', label: 'Depth', min: 60, max: 260, step: 2, fmt: px },
       { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }, SPIN] },
   };
@@ -1921,7 +1926,7 @@
           direction: cfg.scale.flip ? 'left to right' : 'bottom to top' },
         orbit: { ...lift('orbit'), spinDeg: cfg.orbit.spin },
         grow: { sizePct: Math.round(cfg.grow.size * 100), pushPx: cfg.grow.push, reachPx: cfg.grow.reach, spinDeg: cfg.grow.spin, motion: 'shared hover spring', push: 'radially away from the hovered cube, smoothstep falloff' },
-        depth: { stepMs: Math.round(DEPTH_STEP_MS / cfg.motion.speed), order: '01 → 02 → 03 → 02 → 01', thickPx: cfg.depth.size, thinPx: +D_THIN.toFixed(1),
+        depth: { stepMs: Math.round(DEPTH_STEP_MS / cfg.motion.speed), onHover: '01 → 02 → 03, then holds', onLeave: '03 → 01 directly', thickPx: cfg.depth.size, thinPx: +D_THIN.toFixed(1),
           pausePct: Math.round(cfg.depth.hold * 100), spinDeg: cfg.depth.spin, spinDirection: 'up', curve: 'smootherstep + bounce overshoot', both: 'the thick slab thins while the next one thickens, stack width stays the same' },
         cardsPerRow: cfg.layout.cols,
       }, null, 2);
@@ -1958,7 +1963,7 @@
   applyAll();
   requestAnimationFrame(tick);
   // console handle for scrubbing the loop: __motion.seek(0..1)
-  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); }, seekDepth: v => { dP = v; renderDepth(); },
+  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); }, seekDepth: u => { dU = u; renderDepth(); },
     // pose a spinning layer at an angle (degrees): __motion.spinAt('stack-layer-3', 45)
     spinAt: (id, deg) => { for (const h of HOVER) { const sp = h.byId[id]; if (sp && sp.spin) { sp.spin.a = sp.spin.target = deg * Math.PI / 180; if (deg % 90) sp.spin.draw(sp.layer.blur); else sp.spin.restore(sp.layer.blur); } } } };
 })();
