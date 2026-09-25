@@ -259,7 +259,7 @@
     orbit:  { strength: 14, influence: 0.45, spin: 90 },
     scale:  { spin: 180, entry: 200, flip: false },
     grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
-    depth:  { size: 130, hold: 0.3 },
+    depth:  { size: 130, hold: 0.3, spin: 90 },
     layout: { cols: 2 },
     preview: false,
   };
@@ -980,48 +980,68 @@
     blur.style.setProperty('--fill-a', '50%');
     const svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 1080 1080'); svg.setAttribute('fill', 'none'); svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML = `<defs>${[0, 1, 2].map(k => `<linearGradient id="dp${i}g${k}" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#353232"/><stop offset="1" stop-color="#353232" stop-opacity="0"/></linearGradient>`).join('')}</defs>
-      ${[0, 1, 2].map(k => `<line stroke="url(#dp${i}g${k})"/>`).join('')}<path stroke="#FDFCFC"/>`;
+    // all 12 edges of the box: while a slab turns, each fades with its two faces (as in 04)
+    svg.innerHTML = `<defs>${SPIN_EDGES.map((_, k) => `<linearGradient id="dp${i}g${k}" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#353232"/><stop offset="0.5" stop-color="#353232"/><stop offset="1" stop-color="#353232"/></linearGradient>`).join('')}</defs>
+      ${SPIN_EDGES.map((_, k) => `<line stroke="url(#dp${i}g${k})"/>`).join('')}<path stroke="#FDFCFC"/>`;
     layer.append(blur, svg);
     depthCard.appendChild(layer);
-    return { layer, blur, svg, lines: [...svg.querySelectorAll('line')], grads: [...svg.querySelectorAll('linearGradient')],
-      stops: [...svg.querySelectorAll('stop')], outline: svg.querySelector('path'), poly: null, key: null };
+    const grads = [...svg.querySelectorAll('linearGradient')];
+    return { layer, blur, svg, lines: [...svg.querySelectorAll('line')], grads, stops: grads.map(g => [...g.querySelectorAll('stop')]),
+      outline: svg.querySelector('path'), poly: null, key: null, L: 0, t: D_THIN, a: 0, av: 0, target: 0 };
   });
-  function drawSlab(c, L, t) {
-    const f = n => n.toFixed(2), Y = D_Y, H = D_H;
-    const hex = [[L, Y], [L + 100, Y - H], [L + 100 + t, Y - H], [L + 200 + t, Y], [L + 100 + t, Y + H], [L + 100, Y + H]];
-    const key = f(L) + '/' + f(t);
+  // A slab is a box turned a quarter on screen (like 04): worked out upright with a square
+  // D_S × D_S cross-section and height t, then turned back so its height runs left to right.
+  // Turning on its own axis spins the square face in place, so every quarter turn looks the same.
+  const D_S = D_H / C30;
+  function drawSlab(c, L, t, a) {
+    const f = n => n.toFixed(2);
+    const key = f(L) + '/' + f(t) + '/' + a.toFixed(4);
     if (c.key === key) return;
-    c.key = key;
-    c.outline.setAttribute('d', 'M' + hex.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
-    // inner edges run from the face's back corner: up, down, and back along the depth
-    const v = [L + t, Y], ends = [[L + 100 + t, Y - H], [L + 100 + t, Y + H], [L, Y]];
+    Object.assign(c, { key, L, t });
+    const cx = L + (D_S + t) / 2, cs = Math.cos(a), sn = Math.sin(a), REST = SPIN_AX[0][2];
+    const view = ([X, Y, Z]) => { const Xr = X * cs + Z * sn, Zr = -X * sn + Z * cs;
+      return [0, 1, 2].map(k => Xr * SPIN_AX[0][k] + Y * SPIN_AX[1][k] + Zr * SPIN_AX[2][k]); };
+    const half = [D_S / 2, t / 2, D_S / 2];
+    const P = [...Array(8)].map((_, i) => view([0, 1, 2].map(b => (i >> b & 1 ? 1 : -1) * half[b])));
+    const S = P.map(([x, y]) => [cx - y, D_Y + x]);
+    const faceZ = (b, sign) => { const n = [0, 0, 0]; n[b] = sign ? 1 : -1; return view(n)[2]; };
     c.lines.forEach((ln, k) => {
+      const [i, j, ax] = SPIN_EDGES[k];
+      const w = smooth(Math.min(...[0, 1, 2].filter(b => b !== ax).map(b => faceZ(b, i >> b & 1))) / (0.6 * REST));
+      if (w <= 0.001) { ln.setAttribute('visibility', 'hidden'); return; }
+      ln.removeAttribute('visibility');
+      ln.setAttribute('stroke-opacity', w.toFixed(3));
+      // fades from the near end; the face edges hold full strength for their near half
+      const near = clamp01((1 + (P[i][2] - P[j][2]) / (REST * half[ax] * 2)) / 2), st = c.stops[k];
+      st[0].setAttribute('stop-opacity', near.toFixed(3));
+      st[1].setAttribute('stop-opacity', ax === 1 ? '0.5' : '1');
+      st[2].setAttribute('stop-opacity', (1 - near).toFixed(3));
       for (const el of [ln, c.grads[k]]) {
-        el.setAttribute('x1', f(v[0])); el.setAttribute('y1', f(v[1]));
-        el.setAttribute('x2', f(ends[k][0])); el.setAttribute('y2', f(ends[k][1]));
+        el.setAttribute('x1', f(S[i][0])); el.setAttribute('y1', f(S[i][1]));
+        el.setAttribute('x2', f(S[j][0])); el.setAttribute('y2', f(S[j][1]));
       }
-      ln.setAttribute('visibility', k === 2 && t < 1 ? 'hidden' : 'visible');
     });
-    setMask(c.blur, hex);
-    c.poly = hex;
+    const H = hull(S);
+    c.outline.setAttribute('d', 'M' + H.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
+    setMask(c.blur, H);
+    c.poly = H;
   }
-  let dP = 0, dVel = 0, dHover = false, dRet = null, dPt = null;
+  let dP = 0, dVel = 0, dHover = false, dRet = null, dPt = null, dTop = null;
   function renderDepth() {
     const n = Math.floor(dP), f = dP - n, step = ((n % 4) + 4) % 4;
     const e = ease(f / Math.max(0.01, 1 - cfg.depth.hold));   // the hand-off, then a pause
     const a = DSEQ[step], b = DSEQ[(step + 1) % 4], thick = cfg.depth.size;
     const T = [0, 1, 2].map(i => i === a ? lerp(thick, D_THIN, e) : i === b ? lerp(D_THIN, thick, e) : D_THIN);
     let L = D_LEFT - (thick - D_FIG_THICK) / 2;   // a different Depth stays centred on the Figma frame
-    depthSlabs.forEach((c, i) => { drawSlab(c, L, T[i]); if (i < 2) L += D_GAPS[i] + (T[i] - D_THIN); });
+    depthSlabs.forEach((c, i) => { drawSlab(c, L, T[i], c.a); if (i < 2) L += D_GAPS[i] + (T[i] - D_THIN); });
   }
   const depthFig = e => { const r = depthCard.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
   depthCard.addEventListener('pointerenter', e => { dHover = true; dPt = depthFig(e); });
   depthCard.addEventListener('pointermove', e => { dPt = depthFig(e); });
   depthCard.addEventListener('pointerleave', () => { dHover = false; dPt = null; });
   // hover tint per slab, topmost first
-  const depthParts = [...depthSlabs].reverse().map(c => ({ layers: [c.layer], tint: c.stops, over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
+  const depthParts = [...depthSlabs].reverse().map(c => ({ layers: [c.layer], tint: c.stops.flat(), over: p => !!c.poly && inPoly(p, c.poly), x: 0, drawn: null }));
   function stepDepth(dt) {
     const sp = cfg.motion.speed, full = sp / (4 * DEPTH_STEP_MS);
     if (!(dHover || cfg.preview) && (dRet || dVel > 0 || dP % 4 !== 0)) {
@@ -1036,6 +1056,19 @@
       if (dVel > 0) { dP = (dP + dt * dVel * sp / DEPTH_STEP_MS) % 4; renderDepth(); }
     }
     stepPartTint(depthParts, dPt, dt);
+    // Spin: each time the pointer moves onto a slab it turns upward (as in 04), on the hover spring
+    let top = null;
+    if (dPt) for (let i = depthSlabs.length - 1; i >= 0; i--) { const c = depthSlabs[i]; if (c.poly && inPoly(dPt, c.poly)) { top = c; break; } }
+    if (top !== dTop) { if (top && cfg.depth.spin) top.target -= cfg.depth.spin * Math.PI / 180; dTop = top; }
+    const w = 2 * Math.PI * sp / CURVES[cfg.motion.curve].response, k = w * w, cd = 2 * damping() * w;
+    const n = Math.max(1, Math.ceil(dt / 4)), hs = dt / 1000 / n;
+    for (const c of depthSlabs) {
+      if (c.a === c.target && c.av === 0) continue;
+      if (reduceMotion.matches) { c.a = c.target; c.av = 0; }
+      else for (let j = 0; j < n; j++) { c.av += (k * (c.target - c.a) - cd * c.av) * hs; c.a += c.av * hs; }
+      if (Math.abs(c.target - c.a) < 1e-4 && Math.abs(c.av) < 1e-4) { c.a = c.target; c.av = 0; }
+      drawSlab(c, c.L, c.t, c.a);
+    }
   }
 
   // ---------- Follow pointer ----------
@@ -1208,9 +1241,9 @@
       { k: 'push',  label: 'Push',  min: 0, max: 120, step: 2, fmt: px },
       { k: 'reach', label: 'Reach', min: 150, max: 900, step: 10, fmt: px },
       SPIN] },
-    depth:  { note: 'The thick slab hands its depth to the next one: 01 → 02 → 03 → 02 → 01. Depth: how thick it gets; Pause: the share of each step it holds before the next hand-off.', fields: [
+    depth:  { note: 'The thick slab hands its depth to the next one: 01 → 02 → 03 → 02 → 01. Depth: how thick it gets; Pause: the share of each step it holds before the next hand-off; Spin turns the hovered slab upward, in 90° steps.', fields: [
       { k: 'size', label: 'Depth', min: 60, max: 260, step: 2, fmt: px },
-      { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }] },
+      { k: 'hold', label: 'Pause', min: 0, max: 0.7, step: 0.01, fmt: pct }, SPIN] },
   };
 
   const COLORIZE = '#99C5E1';   // hover tint of the inner edges when Colorize is on
@@ -1317,7 +1350,7 @@
         orbit: { ...lift('orbit'), spinDeg: cfg.orbit.spin },
         grow: { sizePct: Math.round(cfg.grow.size * 100), pushPx: cfg.grow.push, reachPx: cfg.grow.reach, spinDeg: cfg.grow.spin, motion: 'shared hover spring', push: 'radially away from the hovered cube, smoothstep falloff' },
         depth: { stepMs: Math.round(DEPTH_STEP_MS / cfg.motion.speed), order: '01 → 02 → 03 → 02 → 01', thickPx: cfg.depth.size, thinPx: +D_THIN.toFixed(1),
-          pausePct: Math.round(cfg.depth.hold * 100), curve: 'smootherstep + bounce overshoot', both: 'the thick slab thins while the next one thickens, stack width stays the same' },
+          pausePct: Math.round(cfg.depth.hold * 100), spinDeg: cfg.depth.spin, spinDirection: 'up', curve: 'smootherstep + bounce overshoot', both: 'the thick slab thins while the next one thickens, stack width stays the same' },
         cardsPerRow: cfg.layout.cols,
       }, null, 2);
       try { await navigator.clipboard.writeText(txt); $('#toast').textContent = 'Copied to clipboard.'; }
