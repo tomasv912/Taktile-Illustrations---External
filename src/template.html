@@ -710,6 +710,7 @@
     const depth = Math.min(EDGE, Math.max(0, TRAVEL - s));   // part still outside the wall
     const hidden = depth <= 0.01 || opacity <= 0.001;
     c.layer.style.visibility = hidden ? 'hidden' : '';
+    c.poly = null;   // hover shape, in card coordinates (none while hidden or barely faded in)
     if (hidden) return;
     const vx = AX.x * depth, vy = AX.y * depth, ox = AX.x * s, oy = AX.y * s;
     const [A, B, C, D] = F;
@@ -726,6 +727,7 @@
     // fade the pane and the drawing separately: opacity on their parent would cut the
     // blur off from what's behind it
     c.layer.blur.style.opacity = c.layer.svg.style.opacity = opacity.toFixed(3);
+    if (opacity > 0.3) c.poly = hex.map(([x, y]) => [x + ox, y + oy]);
   }
 
   let u = 0, vel = 0, last = performance.now(), holeHover = false, holeRet = null;
@@ -735,8 +737,44 @@
     const sn = s - TRAVEL;                                            // next cube, one length behind
     drawCube(cubes[1], sn, clamp01(1 + sn / (cfg.motion.fade * TRAVEL)));
   }
-  holeCard.addEventListener('pointerenter', () => holeHover = true);
-  holeCard.addEventListener('pointerleave', () => holeHover = false);
+  // Hover tint per shape: the small cubes (as one group) and the big cube each light up only
+  // while the pointer is over them; the loop itself still plays whenever the card is hovered.
+  let holeP = null;
+  const holeFig = e => { const r = holeCard.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080]; };
+  holeCard.addEventListener('pointerenter', e => { holeHover = true; holeP = holeFig(e); });
+  holeCard.addEventListener('pointermove', e => { holeP = holeFig(e); });
+  holeCard.addEventListener('pointerleave', () => { holeHover = false; holeP = null; });
+  const inPoly = ([x, y], P) => {   // even-odd point-in-polygon
+    let inside = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const [xi, yi] = P[i], [xj, yj] = P[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const holeBig = layerOf['hole-big-cube'];
+  const holeBigPts = points(holeBig.svg.querySelector('path').getAttribute('d'));
+  const holeParts = [
+    { layers: cubes.map(c => c.layer), tint: stopsOf(cubes[0].layer), over: p => cubes.some(c => c.poly && inPoly(p, c.poly)) },
+    { layers: [holeBig], tint: stopsOf(holeBig), over: p => inPoly(p, holeBigPts) },
+  ].map(o => ({ ...o, x: 0, drawn: null }));
+  function stepHoleTint(dt) {
+    const tau = CURVES[cfg.motion.curve].response / cfg.motion.speed / 4 * 1000;
+    let taken = false;   // the small cubes paint over the big one, so they win where they overlap
+    for (const part of holeParts) {
+      const on = cfg.preview || (!!holeP && !taken && part.over(holeP));
+      taken = taken || on;
+      const target = on ? 1 : 0;
+      part.x = reduceMotion.matches ? target : part.x + (target - part.x) * (1 - Math.exp(-dt / tau));
+      if (Math.abs(target - part.x) < 0.002) part.x = target;
+      const v = part.x.toFixed(3);
+      if (part.drawn !== v) {
+        part.tint.forEach(el => el.style.setProperty('--hot', v));
+        part.layers.forEach(l => l.style.setProperty('--ohot', v));
+        part.drawn = v;
+      }
+    }
+  }
 
   // ---------- 05: cube scale — vertical conveyor with a spin on the cube's own axis ----------
   // Four cubes ride five slots up the frame: spawn (fading in) → bottom → middle (big) →
@@ -898,7 +936,7 @@
     stepHover(dt);
     stepGrow(dt);
     const sp = cfg.motion.speed;
-    const wasHole = vel, wasScale = scVel;
+    const wasScale = scVel;
     const holeOn = holeHover || cfg.preview;
     if (!holeOn && (holeRet || vel > 0 || u !== 0)) {
       // Return to rest: finish the cycle (u = 1 looks the same as u = 0)
@@ -914,8 +952,7 @@
         renderHole();
       }
     }
-    // loops tint the inner edges of the whole card while they play
-    if (vel !== wasHole) holeCard.style.setProperty('--hot', vel.toFixed(3));
+    stepHoleTint(dt);
     const scOn = scHover || cfg.preview;
     if (!scOn && (scRet || scVel > 0 || scP % 1 !== 0)) {
       // Return to rest: finish the step it is in; every step boundary shows the Figma frame
