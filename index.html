@@ -1,0 +1,1676 @@
+<title>Taktile Illustration Motion</title>
+<style>
+  /* Söhne (Klim Type Foundry) is a licensed font, so it isn't bundled: it is used when it is
+     installed on the machine, or when the licensed webfonts are dropped into fonts/ next to
+     index.html (file names as Klim ships them). Otherwise the system sans takes over. */
+  @font-face { font-family: "Söhne"; font-weight: 400; font-display: swap;
+    src: local("Söhne Buch"), local("Söhne-Buch"), local("Sohne-Buch"), url("fonts/soehne-buch.woff2") format("woff2"); }
+  @font-face { font-family: "Söhne"; font-weight: 500; font-display: swap;
+    src: local("Söhne Kräftig"), local("Söhne-Kräftig"), local("Sohne-Kraftig"), url("fonts/soehne-kraftig.woff2") format("woff2"); }
+  @font-face { font-family: "Söhne Mono"; font-weight: 400; font-display: swap;
+    src: local("Söhne Mono Buch"), local("SöhneMono-Buch"), local("SohneMono-Buch"), url("fonts/soehne-mono-buch.woff2") format("woff2"); }
+  @font-face { font-family: "Söhne Mono"; font-weight: 500; font-display: swap;
+    src: local("Söhne Mono Kräftig"), local("SöhneMono-Kräftig"), local("SohneMono-Kraftig"), url("fonts/soehne-mono-kraftig.woff2") format("woff2"); }
+  :root {
+    --sans: "Söhne", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Söhne Mono", "Söhne", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  :root {
+    --bg: #0B0A0A; --fill: #0B0A0A; --line: #FDFCFC; --inner: #353232;
+    --text: #FDFCFC; --muted: #8a8686; --border: rgba(253,252,252,.09);
+    --panel: #121111; --control: #1c1a1a; --accent: #FDFCFC;
+    --inner-hot: #686565; --conn: #686565; --conn-hot: #FDFCFC;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #F7F6F6; --fill: #F7F6F6; --line: #9A9797; --inner: #9A9797;
+    --text: #0B0A0A; --muted: #686565; --border: rgba(11,10,10,.09);
+    --panel: #FDFCFC; --control: #eeeded; --accent: #0B0A0A;
+    --inner-hot: #686565; --conn: #9A9797; --conn-hot: #353232;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]):not([data-theme="light"]) {
+      color-scheme: light;
+      --bg: #F7F6F6; --fill: #F7F6F6; --line: #9A9797; --inner: #9A9797;
+      --text: #0B0A0A; --muted: #686565; --border: rgba(11,10,10,.09);
+      --panel: #FDFCFC; --control: #eeeded; --accent: #0B0A0A;
+    --inner-hot: #686565; --conn: #9A9797; --conn-hot: #353232;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.4 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    transition: background-color .3s, color .3s;
+  }
+  .app { display: grid; grid-template-columns: 1fr 300px; min-height: 100vh; }
+  main { padding: 24px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; margin-bottom: 20px; }
+  h1 { font-size: 14px; font-weight: 500; margin: 0; letter-spacing: -.01em; }
+  h1 span { color: var(--muted); font-weight: 400; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .controls .label { color: var(--muted); font-size: 12px; margin-right: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .card {
+    position: relative; aspect-ratio: 1; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--bg); overflow: hidden; transition: background-color .3s, border-color .3s;
+  }
+  .card svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .card .tag {
+    position: absolute; top: 12px; left: 14px; z-index: 200; pointer-events: none;
+    font: 11px/1.3 var(--mono); color: var(--muted); letter-spacing: .02em;
+  }
+
+  /* Figma colors → theme tokens (CSS beats SVG presentation attributes) */
+  .card [fill="#0B0A0A"] { fill: var(--fill); }
+  .card [stroke="#FDFCFC"] { stroke: var(--line); }
+  .card [fill="#FDFCFC"] { fill: var(--line); }
+  .card stop[stop-color="#353232"] { stop-color: color-mix(in srgb, var(--inner-hot) calc(var(--hot, 0) * 100%), var(--inner)); }
+  .card [stroke="#686565"] { stroke: color-mix(in srgb, var(--conn-hot) calc(var(--hot, 0) * 100%), var(--conn)); }
+  /* stroke and stop colors are driven every frame by the hover/loop motion (--hot), so they get
+     no CSS transition: one would lag the highlight behind the movement */
+  .card path, .card rect { transition: fill .3s; }
+  /* solid 1px hairlines at any card size: no sub-pixel strokes breaking into dots */
+  .card svg [stroke] { vector-effect: non-scaling-stroke; }
+
+  /* Each Figma group becomes its own layer: a backdrop-blur pane clipped to the group's
+     silhouette (Figma's background blur), with the group's SVG drawn on top of it.
+     --u is one Figma pixel at the current card size. */
+  .card { container-type: inline-size; --u: calc(100cqw / 1080); }
+  .card svg.src, .card svg.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .layer, .layer > svg, .layer > .blur, .card svg.hits-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .layer { pointer-events: none; }
+  .layer > .blur {
+    /* fixed px at every card size; set from the Blur control (default 5px) */
+    -webkit-backdrop-filter: blur(var(--blur, 5px));
+    backdrop-filter: blur(var(--blur, 5px));
+    /* shaped with a mask, not clip-path: Chrome clips a blurred backdrop only to the
+       clip-path's bounding box, which leaks glow outside the shape */
+    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  }
+  /* The pane paints the layer's 50% fill itself, as in Figma (blur + fill on one layer).
+     Chrome skips backdrop-filter on an element that paints nothing, so this is required. */
+  .layer > .blur.filled { background: color-mix(in srgb, var(--fill) var(--fill-a, 50%), transparent); }
+
+  /* per-layer hover: every value comes from the controls */
+  .hit { fill: transparent; stroke: none; pointer-events: all; }
+
+  /* curve presets */
+  .curves { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 4px; }
+  .curve {
+    display: grid; gap: 4px; justify-items: center; padding: 8px 4px 6px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font: 11px/1 inherit;
+  }
+  .curve svg { width: 100%; height: 34px; overflow: visible; }
+  .curve path { stroke: currentColor; fill: none; stroke-width: 1.5; }
+  .curve[aria-pressed="true"] { background: var(--control); color: var(--text); border-color: var(--muted); }
+
+  /* controls */
+  aside {
+    border-left: 1px solid var(--border); background: var(--panel);
+    height: 100vh; position: sticky; top: 0; overflow-y: auto; padding: 18px 18px 40px;
+    transition: background-color .3s, border-color .3s;
+  }
+  aside h2 {
+    font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 28px 0 12px;
+  }
+  aside h2:first-child { margin-top: 4px; }
+  aside p { color: var(--muted); margin: -4px 0 10px; font-size: 12px; }
+  .row { display: grid; grid-template-columns: 78px 1fr 48px; align-items: center; gap: 10px; margin: 10px 0; }
+  .row label { color: var(--muted); }
+  .row output {
+    font: 12px var(--mono); text-align: right; color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 10px; font: inherit; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--control); color: var(--text); }
+  .btn {
+    background: var(--control); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 10px; font: inherit; cursor: pointer;
+  }
+  /* per-card parameters: a collapsed dropdown in the card's bottom-left corner that opens upward */
+  .tune {
+    position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 300; max-height: calc(100% - 44px);
+    display: flex; flex-direction: column-reverse; align-items: flex-start; pointer-events: none;
+  }
+  .tune > summary {
+    pointer-events: auto; cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 12px;
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); transition: color .2s, border-color .2s;
+  }
+  .tune > summary::-webkit-details-marker { display: none; }
+  .tune > summary::after {
+    content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: translateY(1px) rotate(-135deg); transition: transform .2s;
+  }
+  .tune[open] > summary::after { transform: translateY(-2px) rotate(45deg); }
+  .tune > summary:hover, .tune[open] > summary { color: var(--text); border-color: var(--muted); }
+  .tune-body {
+    pointer-events: auto; width: min(100%, 300px); margin-bottom: 6px; overflow-y: auto; min-height: 0;
+    padding: 4px 12px 8px; border: 1px solid var(--border); border-radius: 4px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+  .tune-body p { color: var(--muted); margin: 8px 0 2px; font-size: 12px; text-wrap: pretty; }
+  .tune-body .row { grid-template-columns: 64px 1fr 44px; gap: 8px; margin: 8px 0; }
+  .tune-body .check { margin: 8px 0; }
+  .tune-body .link { background: none; border: 0; padding: 0; margin: 4px 0 2px; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .tune-body .link:hover { color: var(--text); }
+
+  .actions { display: flex; gap: 8px; margin-top: 28px; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--muted); margin: 10px 0; cursor: pointer; }
+  .toast { color: var(--muted); font-size: 12px; min-height: 18px; margin-top: 8px; }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-left: 0; border-top: 1px solid var(--border); }
+    main { padding: 16px; }
+  }
+  /* narrow screens cap the per-row choice so cards stay usable */
+  @media (max-width: 900px) { .grid[data-cols="3"], .grid[data-cols="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .grid, .grid[data-cols] { grid-template-columns: 1fr; } }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .copy-fallback { width: 100%; height: 160px; margin-top: 8px; font: 11px var(--mono);
+    background: var(--control); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+</style>
+<div class="app">
+  <main>
+    <header>
+      <h1>Taktile illustrations <span>· hover to play</span></h1>
+      <div class="controls">
+        <span class="label" id="cols-label">Per row</span>
+        <div class="seg" id="cols" role="group" aria-labelledby="cols-label">
+          <button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button>
+        </div>
+        <div class="seg" id="theme" role="group" aria-label="Theme">
+          <button data-v="dark">Dark</button><button data-v="light">Light</button><button data-v="system">System</button>
+        </div>
+      </div>
+    </header>
+    <div class="grid">
+      <div class="card" id="card-cubes"><div class="tag">01 · Cubes lift</div>
+        <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="cubes-cube-1">
+<path id="cubes-union" d="M397 414.973V514.973L310.5 564.973L224 514.973V414.973L310.5 365L397 414.973Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="cubes-vector-5870" d="M224 415L310.5 465" stroke="url(#cubes-paint0-linear-0-4)"/>
+<path id="cubes-vector-5870-2" d="M310.5 465L397 415" stroke="url(#cubes-paint1-linear-0-4)"/>
+<path id="cubes-vector-5871" d="M310.5 465V564.75" stroke="url(#cubes-paint2-linear-0-4)"/>
+</g>
+<g id="cubes-base">
+<path id="cubes-union-2" d="M712.5 485.288V684.711L540 784.423L367.5 684.711V485.288L540 385.631L712.5 485.288Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="cubes-vector-5868" d="M540 585L710.497 486.447" stroke="url(#cubes-paint3-linear-0-4)"/>
+<path id="cubes-vector-5868-2" d="M369.07 486.195L540.003 585" stroke="url(#cubes-paint4-linear-0-4)"/>
+<path id="cubes-vector-5869" d="M540 585V779" stroke="url(#cubes-paint5-linear-0-4)"/>
+</g>
+<g id="cubes-cube-2">
+<path id="cubes-union-3" d="M626 294.973V394.973L539.5 444.973L453 394.973V294.973L539.5 245L626 294.973Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="cubes-vector-5870-3" d="M453 295L539.5 345" stroke="url(#cubes-paint6-linear-0-4)"/>
+<path id="cubes-vector-5870-4" d="M539.5 345L626 295" stroke="url(#cubes-paint7-linear-0-4)"/>
+<path id="cubes-vector-5871-2" d="M539.5 345V444.75" stroke="url(#cubes-paint8-linear-0-4)"/>
+</g>
+<g id="cubes-cube-3">
+<path id="cubes-union-4" d="M856 654.973V754.973L769.5 804.973L683 754.973V654.973L769.5 605L856 654.973Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="cubes-vector-5870-5" d="M683 655L769.5 705" stroke="url(#cubes-paint9-linear-0-4)"/>
+<path id="cubes-vector-5870-6" d="M769.5 705L856 655" stroke="url(#cubes-paint10-linear-0-4)"/>
+<path id="cubes-vector-5871-3" d="M769.5 705V804.75" stroke="url(#cubes-paint11-linear-0-4)"/>
+</g>
+<defs>
+<linearGradient id="cubes-paint0-linear-0-4" x1="293.506" y1="465" x2="226.029" y2="465" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint1-linear-0-4" x1="312.529" y1="465" x2="380.006" y2="465" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint2-linear-0-4" x1="311" y1="465" x2="311" y2="564.75" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint3-linear-0-4" x1="544" y1="585" x2="677" y2="585" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint4-linear-0-4" x1="506.421" y1="585" x2="373.081" y2="585" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint5-linear-0-4" x1="540.5" y1="585" x2="540.5" y2="779" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint6-linear-0-4" x1="522.506" y1="345" x2="455.029" y2="345" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint7-linear-0-4" x1="541.529" y1="345" x2="609.006" y2="345" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint8-linear-0-4" x1="540" y1="345" x2="540" y2="444.75" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint9-linear-0-4" x1="752.506" y1="705" x2="685.029" y2="705" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint10-linear-0-4" x1="771.529" y1="705" x2="839.006" y2="705" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="cubes-paint11-linear-0-4" x1="770" y1="705" x2="770" y2="804.75" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+</defs></svg></div>
+      <div class="card" id="card-stack"><div class="tag">02 · Stack rises</div>
+        <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="stack-base">
+<path id="stack-union" d="M712.5 705.233V774.656L540 874.368L367.5 774.656V705.233L540 605.576L712.5 705.233Z" stroke="#FDFCFC"/>
+<path id="stack-vector-5868" d="M367 704.945L540 804.945L713 704.945" stroke="url(#stack-paint0-linear-7169-5641)"/>
+<path id="stack-vector-5870" d="M540 805L540 874" stroke="url(#stack-paint1-linear-7169-5641)"/>
+</g>
+<g id="stack-layer-1">
+<path id="stack-union-2" d="M712.5 672.233V681.656L540 781.368L367.5 681.656V672.233L540 572.576L712.5 672.233Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="stack-vector-5868-2" d="M367 671.945L540 771.945L713 671.945" stroke="url(#stack-paint2-linear-7169-5641)"/>
+<path id="stack-vector-5869" d="M540 772L540 781" stroke="url(#stack-paint3-linear-7169-5641)"/>
+</g>
+<g id="stack-layer-2">
+<path id="stack-union-3" d="M712.5 624.233V633.656L540 733.368L367.5 633.656V624.233L540 524.576L712.5 624.233Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="stack-vector-5868-3" d="M367 623.945L540 723.945L713 623.945" stroke="url(#stack-paint4-linear-7169-5641)"/>
+<path id="stack-vector-5869-2" d="M540 724L540 733" stroke="url(#stack-paint5-linear-7169-5641)"/>
+</g>
+<g id="stack-layer-3">
+<path id="stack-union-4" d="M712.5 561.233V570.656L540 670.368L367.5 570.656V561.233L540 461.576L712.5 561.233Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="stack-vector-5868-4" d="M367 560.945L540 660.945L713 560.945" stroke="url(#stack-paint6-linear-7169-5641)"/>
+<path id="stack-vector-5869-3" d="M540 661L540 670" stroke="url(#stack-paint7-linear-7169-5641)"/>
+</g>
+<g id="stack-layer-4">
+<path id="stack-union-5" d="M712.5 463.233V472.656L540 572.368L367.5 472.656V463.233L540 363.576L712.5 463.233Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="stack-vector-5868-5" d="M367 462.945L540 562.945L713 462.945" stroke="url(#stack-paint8-linear-7169-5641)"/>
+<path id="stack-vector-5869-4" d="M540 563L540 572" stroke="url(#stack-paint9-linear-7169-5641)"/>
+</g>
+<g id="stack-layer-5">
+<path id="stack-union-6" d="M712.5 306.233V315.656L540 415.368L367.5 315.656V306.233L540 206.576L712.5 306.233Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="stack-vector-5868-6" d="M367 305.945L540 405.945L713 305.945" stroke="url(#stack-paint10-linear-7169-5641)"/>
+<path id="stack-vector-5869-5" d="M540 406L540 415" stroke="url(#stack-paint11-linear-7169-5641)"/>
+</g>
+<defs>
+<linearGradient id="stack-paint0-linear-7169-5641" x1="713" y1="804.945" x2="367" y2="804.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint1-linear-7169-5641" x1="540.5" y1="805" x2="540.5" y2="874" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint2-linear-7169-5641" x1="713" y1="771.945" x2="367" y2="771.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint3-linear-7169-5641" x1="540" y1="772" x2="540" y2="781" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint4-linear-7169-5641" x1="713" y1="723.945" x2="367" y2="723.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint5-linear-7169-5641" x1="540" y1="724" x2="540" y2="733" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint6-linear-7169-5641" x1="713" y1="660.945" x2="367" y2="660.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint7-linear-7169-5641" x1="540" y1="661" x2="540" y2="670" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint8-linear-7169-5641" x1="713" y1="562.945" x2="367" y2="562.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint9-linear-7169-5641" x1="540" y1="563" x2="540" y2="572" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint10-linear-7169-5641" x1="713" y1="405.945" x2="367" y2="405.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="stack-paint11-linear-7169-5641" x1="540" y1="406" x2="540" y2="415" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+</defs></svg></div>
+      <div class="card" id="card-hole"><div class="tag">03 · Cube into hole (loop)</div>
+        <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="hole-big-cube">
+<path id="hole-union" d="M779.5 435.233V644.656L607 744.368L434.5 644.656V435.233L607 335.576L779.5 435.233Z" stroke="#FDFCFC"/>
+<path id="hole-vector-5868" d="M434 434.945L607 534.945L780 434.945" stroke="url(#hole-paint0-linear-7169-5641)"/>
+<path id="hole-vector-5870" d="M607 535L607 744" stroke="url(#hole-paint1-linear-7169-5641)"/>
+<path id="hole-rectangle-1532577386" d="M496.962 485V484.5L445 514.5V515V515.5L496.962 485.5V485Z" fill="url(#hole-paint2-linear-7169-5641)"/>
+<rect id="hole-rectangle-1532577387" x="-0.433013" y="0.25" width="59" height="59" transform="matrix(-0.866025 -0.5 0 1 496.153 484.783)" stroke="#FDFCFC"/>
+</g>
+<g id="hole-cube">
+<path id="hole-union-2" d="M300 539.041V599.157L352 629.215L404 599.157V539.041L352 509L300 539.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="hole-vector-5870-2" d="M404 539.058L352 569.115" stroke="url(#hole-paint3-linear-7169-5641)"/>
+<path id="hole-vector-5870-3" d="M352 569.115L300 539.058" stroke="url(#hole-paint4-linear-7169-5641)"/>
+<path id="hole-vector-5871" d="M352 569.115V629.081" stroke="url(#hole-paint5-linear-7169-5641)"/>
+</g>
+<defs>
+<linearGradient id="hole-paint0-linear-7169-5641" x1="780" y1="554.945" x2="434" y2="554.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="hole-paint1-linear-7169-5641" x1="607" y1="525" x2="607" y2="744" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="hole-paint2-linear-7169-5641" x1="496.962" y1="486" x2="445" y2="486" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="hole-paint3-linear-7169-5641" x1="362.216" y1="569.115" x2="402.78" y2="569.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="hole-paint4-linear-7169-5641" x1="350.78" y1="569.115" x2="310.216" y2="569.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="hole-paint5-linear-7169-5641" x1="351.5" y1="569.115" x2="351.5" y2="629.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+</defs></svg></div>
+      <div class="card" id="card-slices"><div class="tag">04 · Slices slide right</div>
+        <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="slices-base">
+<path id="slices-union" d="M400.712 712.5L371.289 712.5L271.577 540L371.289 367.5L400.712 367.5L500.369 540L400.712 712.5Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="slices-vector-5868" d="M401 367L301 540L401 713" stroke="url(#slices-paint0-linear-7169-5641)"/>
+<path id="slices-vector-5869" d="M300.945 540L271.945 540" stroke="url(#slices-paint1-linear-7169-5641)"/>
+</g>
+<g id="slices-layer-2">
+<path id="slices-union-2" d="M510.235 712.5L480.812 712.5L381.101 540L480.812 367.5L510.235 367.5L609.893 540L510.235 712.5Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="slices-vector-5868-2" d="M510.523 367L410.523 540L510.523 713" stroke="url(#slices-paint2-linear-7169-5641)"/>
+<path id="slices-vector-5869-2" d="M410.469 540L381.469 540" stroke="url(#slices-paint3-linear-7169-5641)"/>
+</g>
+<g id="slices-layer-3">
+<path id="slices-union-3" d="M660.243 712.5L530.82 712.5L431.108 540L530.82 367.5L660.243 367.5L759.9 540L660.243 712.5Z" fill="#0B0A0A" fill-opacity="0.51" stroke="#FDFCFC"/>
+<path id="slices-vector-5868-3" d="M660.008 367L560.008 540L660.008 713" stroke="url(#slices-paint4-linear-7169-5641)"/>
+<path id="slices-vector-5870" d="M560.008 540L431.477 540" stroke="url(#slices-paint5-linear-7169-5641)"/>
+</g>
+<g id="slices-layer-4">
+<path id="slices-union-4" d="M709.665 712.973L680.242 712.973L580.53 540.473L680.242 367.973L709.665 367.973L809.322 540.473L709.665 712.973Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="slices-vector-5868-4" d="M709.953 367.473L609.953 540.473L709.953 713.473" stroke="url(#slices-paint6-linear-7169-5641)"/>
+<path id="slices-vector-5869-3" d="M609.898 540.473L580.898 540.473" stroke="url(#slices-paint7-linear-7169-5641)"/>
+</g>
+<defs>
+<linearGradient id="slices-paint0-linear-7169-5641" x1="301" y1="713" x2="301" y2="367" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint1-linear-7169-5641" x1="301" y1="540" x2="271.945" y2="540" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint2-linear-7169-5641" x1="410.523" y1="713" x2="410.523" y2="367" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint3-linear-7169-5641" x1="410.523" y1="540" x2="381.469" y2="540" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint4-linear-7169-5641" x1="560.008" y1="713" x2="560.008" y2="367" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint5-linear-7169-5641" x1="560.008" y1="4324.26" x2="431.477" y2="4324.26" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint6-linear-7169-5641" x1="609.953" y1="713.473" x2="609.953" y2="367.473" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="slices-paint7-linear-7169-5641" x1="609.953" y1="540.473" x2="580.898" y2="540.473" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+</defs></svg></div>
+      <div class="card" id="card-scale"><div class="tag">05 · Cube scale (loop)</div></div>
+      <div class="card" id="card-orbit"><div class="tag">06 · Satellites lift</div>
+        <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="orbit-cube">
+<g id="orbit-cube-2">
+<path id="orbit-union" d="M237 354.041V414.157L289 444.215L341 414.157V354.041L289 324L237 354.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5870" d="M341 354.058L289 384.115" stroke="url(#orbit-paint0-linear-7169-5641)"/>
+<path id="orbit-vector-5870-2" d="M289 384.115L237 354.058" stroke="url(#orbit-paint1-linear-7169-5641)"/>
+<path id="orbit-vector-5871" d="M289 384.115V444.081" stroke="url(#orbit-paint2-linear-7169-5641)"/>
+</g>
+</g>
+<g id="orbit-conn-5881"><path id="orbit-vector-5881" d="M315 403L448 480" stroke="#686565" stroke-dasharray="4 4"/></g>
+<g id="orbit-cube-3">
+<g id="orbit-cube-4">
+<path id="orbit-union-2" d="M739 354.041V414.157L791 444.215L843 414.157V354.041L791 324L739 354.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5870-3" d="M843 354.058L791 384.115" stroke="url(#orbit-paint3-linear-7169-5641)"/>
+<path id="orbit-vector-5870-4" d="M791 384.115L739 354.058" stroke="url(#orbit-paint4-linear-7169-5641)"/>
+<path id="orbit-vector-5871-2" d="M791 384.115V444.081" stroke="url(#orbit-paint5-linear-7169-5641)"/>
+</g>
+</g>
+<g id="orbit-conn-5885"><path id="orbit-vector-5885" d="M540 436L540 234" stroke="#686565" stroke-dasharray="4 4"/></g>
+<g id="orbit-conn-5889"><path id="orbit-vector-5889" d="M765 400L662 460" stroke="#686565" stroke-dasharray="4 4"/></g>
+<g id="orbit-conn-5886"><path id="orbit-vector-5886" d="M540 777L540 736" stroke="#686565" stroke-dasharray="4 4"/></g>
+<g id="orbit-big-cube">
+<path id="orbit-union-3" d="M712.5 436.233V635.656L540 735.368L367.5 635.656V436.233L540 336.576L712.5 436.233Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5868" d="M367 435.945L540 535.945L713 435.945" stroke="url(#orbit-paint6-linear-7169-5641)"/>
+<path id="orbit-vector-5870-5" d="M540 536L540 745" stroke="url(#orbit-paint7-linear-7169-5641)"/>
+</g>
+<g id="orbit-cube-5">
+<path id="orbit-union-4" d="M488 209.041V269.157L540 299.215L592 269.157V209.041L540 179L488 209.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5870-6" d="M592 209.058L540 239.115" stroke="url(#orbit-paint8-linear-7169-5641)"/>
+<path id="orbit-vector-5870-7" d="M540 239.115L488 209.058" stroke="url(#orbit-paint9-linear-7169-5641)"/>
+<path id="orbit-vector-5871-3" d="M540 239.115V299.081" stroke="url(#orbit-paint10-linear-7169-5641)"/>
+</g>
+<g id="orbit-cube-6">
+<path id="orbit-union-5" d="M488 811.041V871.157L540 901.215L592 871.157V811.041L540 781L488 811.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5870-8" d="M592 811.058L540 841.115" stroke="url(#orbit-paint11-linear-7169-5641)"/>
+<path id="orbit-vector-5870-9" d="M540 841.115L488 811.058" stroke="url(#orbit-paint12-linear-7169-5641)"/>
+<path id="orbit-vector-5871-4" d="M540 841.115V901.081" stroke="url(#orbit-paint13-linear-7169-5641)"/>
+</g>
+<g id="orbit-conn-5888"><path id="orbit-vector-5888" d="M752 659L634 591" stroke="#686565" stroke-dasharray="4 4"/></g>
+<g id="orbit-conn-5890"><path id="orbit-vector-5890" d="M450 584L288 679" stroke="#686565" stroke-dasharray="4 4"/></g>
+<g id="orbit-cube-7">
+<g id="orbit-cube-8">
+<path id="orbit-union-6" d="M856 659.041V719.157L804 749.215L752 719.157V659.041L804 629L856 659.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5870-10" d="M752 659.058L804 689.115" stroke="url(#orbit-paint14-linear-7169-5641)"/>
+<path id="orbit-vector-5870-11" d="M804 689.115L856 659.058" stroke="url(#orbit-paint15-linear-7169-5641)"/>
+<path id="orbit-vector-5871-5" d="M804 689.115V749.081" stroke="url(#orbit-paint16-linear-7169-5641)"/>
+</g>
+</g>
+<g id="orbit-cube-9">
+<g id="orbit-cube-10">
+<path id="orbit-union-7" d="M224 659.041V719.157L276 749.215L328 719.157V659.041L276 629L224 659.041Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="orbit-vector-5870-12" d="M328 659.058L276 689.115" stroke="url(#orbit-paint17-linear-7169-5641)"/>
+<path id="orbit-vector-5870-13" d="M276 689.115L224 659.058" stroke="url(#orbit-paint18-linear-7169-5641)"/>
+<path id="orbit-vector-5871-6" d="M276 689.115V749.081" stroke="url(#orbit-paint19-linear-7169-5641)"/>
+</g>
+</g>
+<defs>
+<linearGradient id="orbit-paint0-linear-7169-5641" x1="299.216" y1="384.115" x2="339.78" y2="384.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint1-linear-7169-5641" x1="287.78" y1="384.115" x2="247.216" y2="384.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint2-linear-7169-5641" x1="288.5" y1="384.115" x2="288.5" y2="444.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint3-linear-7169-5641" x1="801.216" y1="384.115" x2="841.78" y2="384.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint4-linear-7169-5641" x1="789.78" y1="384.115" x2="749.216" y2="384.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint5-linear-7169-5641" x1="790.5" y1="384.115" x2="790.5" y2="444.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint6-linear-7169-5641" x1="713" y1="555.945" x2="367" y2="555.945" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232" stop-opacity="0"/>
+<stop offset="0.25" stop-color="#353232"/>
+<stop offset="0.75" stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint7-linear-7169-5641" x1="540" y1="526" x2="540" y2="745" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint8-linear-7169-5641" x1="550.216" y1="239.115" x2="590.78" y2="239.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint9-linear-7169-5641" x1="538.78" y1="239.115" x2="498.216" y2="239.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint10-linear-7169-5641" x1="539.5" y1="239.115" x2="539.5" y2="299.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint11-linear-7169-5641" x1="550.216" y1="841.115" x2="590.78" y2="841.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint12-linear-7169-5641" x1="538.78" y1="841.115" x2="498.216" y2="841.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint13-linear-7169-5641" x1="539.5" y1="841.115" x2="539.5" y2="901.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint14-linear-7169-5641" x1="793.784" y1="689.115" x2="753.22" y2="689.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint15-linear-7169-5641" x1="805.22" y1="689.115" x2="845.784" y2="689.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint16-linear-7169-5641" x1="804.5" y1="689.115" x2="804.5" y2="749.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint17-linear-7169-5641" x1="286.216" y1="689.115" x2="326.78" y2="689.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint18-linear-7169-5641" x1="274.78" y1="689.115" x2="234.216" y2="689.115" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="orbit-paint19-linear-7169-5641" x1="275.5" y1="689.115" x2="275.5" y2="749.081" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+</defs></svg></div>
+      <div class="card" id="card-grow"><div class="tag">07 · Cubes grow</div>
+        <svg class="src" viewBox="0 0 1080 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="grow-cube-1">
+<path id="grow-cube-1-union" d="M322.625 222.478V297.478L387.5 334.978L452.375 297.478V222.478L387.5 184.997L322.625 222.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-1-vector-5870" d="M452.375 222.497L387.5 259.997" stroke="url(#grow-paint0-linear)"/>
+<path id="grow-cube-1-vector-5870-2" d="M387.5 259.997L322.625 222.497" stroke="url(#grow-paint1-linear)"/>
+<path id="grow-cube-1-vector-5871" d="M387.5 259.997V334.81" stroke="url(#grow-paint2-linear)"/>
+</g>
+<g id="grow-cube-4">
+<path id="grow-cube-4-union" d="M322.625 422.478V497.478L387.5 534.978L452.375 497.478V422.478L387.5 384.997L322.625 422.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-4-vector-5870" d="M452.375 422.497L387.5 459.997" stroke="url(#grow-paint3-linear)"/>
+<path id="grow-cube-4-vector-5870-2" d="M387.5 459.997L322.625 422.497" stroke="url(#grow-paint4-linear)"/>
+<path id="grow-cube-4-vector-5871" d="M387.5 459.997V534.81" stroke="url(#grow-paint5-linear)"/>
+</g>
+<g id="grow-cube-7">
+<path id="grow-cube-7-union" d="M322.625 622.478V697.478L387.5 734.978L452.375 697.478V622.478L387.5 584.997L322.625 622.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-7-vector-5870" d="M452.375 622.497L387.5 659.997" stroke="url(#grow-paint6-linear)"/>
+<path id="grow-cube-7-vector-5870-2" d="M387.5 659.997L322.625 622.497" stroke="url(#grow-paint7-linear)"/>
+<path id="grow-cube-7-vector-5871" d="M387.5 659.997V734.81" stroke="url(#grow-paint8-linear)"/>
+</g>
+<g id="grow-cube-2">
+<path id="grow-cube-2-union" d="M475.625 302.478V377.478L540.5 414.978L605.375 377.478V302.478L540.5 264.997L475.625 302.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-2-vector-5870" d="M605.375 302.497L540.5 339.997" stroke="url(#grow-paint9-linear)"/>
+<path id="grow-cube-2-vector-5870-2" d="M540.5 339.997L475.625 302.497" stroke="url(#grow-paint10-linear)"/>
+<path id="grow-cube-2-vector-5871" d="M540.5 339.997V414.81" stroke="url(#grow-paint11-linear)"/>
+</g>
+<g id="grow-cube-5">
+<path id="grow-cube-5-union" d="M475.625 502.478V577.478L540.5 614.978L605.375 577.478V502.478L540.5 464.997L475.625 502.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-5-vector-5870" d="M605.375 502.497L540.5 539.997" stroke="url(#grow-paint12-linear)"/>
+<path id="grow-cube-5-vector-5870-2" d="M540.5 539.997L475.625 502.497" stroke="url(#grow-paint13-linear)"/>
+<path id="grow-cube-5-vector-5871" d="M540.5 539.997V614.81" stroke="url(#grow-paint14-linear)"/>
+</g>
+<g id="grow-cube-8">
+<path id="grow-cube-8-union" d="M475.625 702.478V777.478L540.5 814.978L605.375 777.478V702.478L540.5 664.997L475.625 702.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-8-vector-5870" d="M605.375 702.497L540.5 739.997" stroke="url(#grow-paint15-linear)"/>
+<path id="grow-cube-8-vector-5870-2" d="M540.5 739.997L475.625 702.497" stroke="url(#grow-paint16-linear)"/>
+<path id="grow-cube-8-vector-5871" d="M540.5 739.997V814.81" stroke="url(#grow-paint17-linear)"/>
+</g>
+<g id="grow-cube-3">
+<path id="grow-cube-3-union" d="M628.625 382.478V457.478L693.5 494.978L758.375 457.478V382.478L693.5 344.997L628.625 382.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-3-vector-5870" d="M758.375 382.497L693.5 419.997" stroke="url(#grow-paint18-linear)"/>
+<path id="grow-cube-3-vector-5870-2" d="M693.5 419.997L628.625 382.497" stroke="url(#grow-paint19-linear)"/>
+<path id="grow-cube-3-vector-5871" d="M693.5 419.997V494.81" stroke="url(#grow-paint20-linear)"/>
+</g>
+<g id="grow-cube-6">
+<path id="grow-cube-6-union" d="M628.625 582.478V657.478L693.5 694.978L758.375 657.478V582.478L693.5 544.997L628.625 582.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-6-vector-5870" d="M758.375 582.497L693.5 619.997" stroke="url(#grow-paint21-linear)"/>
+<path id="grow-cube-6-vector-5870-2" d="M693.5 619.997L628.625 582.497" stroke="url(#grow-paint22-linear)"/>
+<path id="grow-cube-6-vector-5871" d="M693.5 619.997V694.81" stroke="url(#grow-paint23-linear)"/>
+</g>
+<g id="grow-cube-9">
+<path id="grow-cube-9-union" d="M628.625 782.478V857.478L693.5 894.978L758.375 857.478V782.478L693.5 744.997L628.625 782.478Z" fill="#0B0A0A" fill-opacity="0.5" stroke="#FDFCFC"/>
+<path id="grow-cube-9-vector-5870" d="M758.375 782.497L693.5 819.997" stroke="url(#grow-paint24-linear)"/>
+<path id="grow-cube-9-vector-5870-2" d="M693.5 819.997L628.625 782.497" stroke="url(#grow-paint25-linear)"/>
+<path id="grow-cube-9-vector-5871" d="M693.5 819.997V894.81" stroke="url(#grow-paint26-linear)"/>
+</g>
+<defs>
+<linearGradient id="grow-paint0-linear" x1="400.246" y1="259.997" x2="450.853" y2="259.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint1-linear" x1="385.978" y1="259.997" x2="335.371" y2="259.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint2-linear" x1="387" y1="259.997" x2="387" y2="334.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint3-linear" x1="400.246" y1="459.997" x2="450.853" y2="459.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint4-linear" x1="385.978" y1="459.997" x2="335.371" y2="459.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint5-linear" x1="387" y1="459.997" x2="387" y2="534.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint6-linear" x1="400.246" y1="659.997" x2="450.853" y2="659.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint7-linear" x1="385.978" y1="659.997" x2="335.371" y2="659.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint8-linear" x1="387" y1="659.997" x2="387" y2="734.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint9-linear" x1="553.246" y1="339.997" x2="603.853" y2="339.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint10-linear" x1="538.978" y1="339.997" x2="488.371" y2="339.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint11-linear" x1="540" y1="339.997" x2="540" y2="414.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint12-linear" x1="553.246" y1="539.997" x2="603.853" y2="539.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint13-linear" x1="538.978" y1="539.997" x2="488.371" y2="539.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint14-linear" x1="540" y1="539.997" x2="540" y2="614.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint15-linear" x1="553.246" y1="739.997" x2="603.853" y2="739.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint16-linear" x1="538.978" y1="739.997" x2="488.371" y2="739.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint17-linear" x1="540" y1="739.997" x2="540" y2="814.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint18-linear" x1="706.246" y1="419.997" x2="756.853" y2="419.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint19-linear" x1="691.978" y1="419.997" x2="641.371" y2="419.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint20-linear" x1="693" y1="419.997" x2="693" y2="494.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint21-linear" x1="706.246" y1="619.997" x2="756.853" y2="619.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint22-linear" x1="691.978" y1="619.997" x2="641.371" y2="619.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint23-linear" x1="693" y1="619.997" x2="693" y2="694.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint24-linear" x1="706.246" y1="819.997" x2="756.853" y2="819.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint25-linear" x1="691.978" y1="819.997" x2="641.371" y2="819.997" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="grow-paint26-linear" x1="693" y1="819.997" x2="693" y2="894.81" gradientUnits="userSpaceOnUse">
+<stop stop-color="#353232"/>
+<stop offset="1" stop-color="#353232" stop-opacity="0"/>
+</linearGradient>
+</defs></svg></div>
+    </div>
+
+  </main>
+  <aside id="panel" aria-label="Animation controls"></aside>
+</div>
+
+<script>
+(() => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const $ = s => document.querySelector(s);
+  const clamp01 = v => Math.min(1, Math.max(0, v));
+
+  // ---------- config ----------
+  const BASE_LOOP_MS = 2400;   // one cube, spawn → gone, at speed 1×
+  // Hover feel, as springs: response = how long a move takes (s). A spring keeps its velocity
+  // when the target changes mid-move, so a moving cursor never makes a layer stop and restart.
+  // How much it overshoots comes from the shared Bounce control, not the preset.
+  const CURVES = {
+    glide:  { label: 'Glide',  response: 0.4 },
+    butter: { label: 'Butter', response: 0.55 },
+    silk:   { label: 'Silk',   response: 0.75 },
+    float:  { label: 'Float',  response: 0.95 },
+    soft:   { label: 'Soft',   response: 1.1 },
+    drift:  { label: 'Drift',  response: 1.3 },
+  };
+  const INFLUENCE_RADIUS = 360;   // Figma px of reach at 100% influence
+  const DEFAULTS = {
+    // shared by every animation on the page (the side panel)
+    motion: { speed: 1, curve: 'butter', bounce: 0, fade: 0.6, smoothing: 350 },
+    look:   { blur: 5 },
+    // each card's own parameters (its Customize parameters dropdown)
+    cubes:  { strength: 14, influence: 0.45, spin: 90 },
+    stack:  { strength: 14, influence: 0.45, turn: false },
+    slices: { strength: 14, influence: 0.45, turn: false },
+    orbit:  { strength: 14, influence: 0.45, spin: 90 },
+    scale:  { spin: 180, entry: 200 },
+    grow:   { size: 0.5, push: 40, reach: 480, spin: 90 },
+    layout: { cols: 2 },
+    preview: false,
+  };
+  const KEY = 'taktile-motion-external-v1';
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const SAVED = ['motion', 'look', 'layout', 'cubes', 'stack', 'slices', 'orbit', 'scale', 'grow'];
+  let cfg = clone(DEFAULTS);
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s) for (const k of SAVED) Object.assign(cfg[k], s[k]);
+    if (!CURVES[cfg.motion.curve]) cfg.motion.curve = DEFAULTS.motion.curve;
+  } catch {}
+  // shared motion helpers
+  const damping = () => 1 - 0.7 * cfg.motion.bounce;               // spring damping from Bounce
+  const smooth = t => { t = Math.min(1, Math.max(0, t)); return t * t * t * (t * (t * 6 - 15) + 10); };
+  // eased 0→1 for timed moves: smootherstep, plus an overshoot bump that grows with Bounce and
+  // still lands at exactly 1 with no velocity
+  const ease = t => { t = Math.min(1, Math.max(0, t)); return smooth(t) + cfg.motion.bounce * 9 * t * t * t * (1 - t) * (1 - t); };
+  // ramp a loop's play speed toward 1 (hovered) or 0 using the shared Start/stop time
+  const ramp = (v, on, dt) => {
+    const target = on ? 1 : 0, r = cfg.motion.smoothing;
+    v = r <= 0 ? target : v + (target - v) * (1 - Math.exp(-dt / (r / 3)));
+    return target === 0 && v < 0.001 ? 0 : v;
+  };
+  // Return to rest (always on): once the pointer leaves, a loop always plays on (never backwards) to the
+  // end of the cycle it is in and comes to rest there. It keeps the speed it had and eases out
+  // to a stop on a cubic Hermite curve, which never overshoots, so it never moves backwards.
+  const RETURN_SLOW = 1.5;   // the glide takes 1.5× as long as the rest of the cycle at full speed
+  function startGlide(x, v, vn) {   // x: loop position, v: its speed now, vn: full speed (per ms)
+    const to = Math.ceil(x - 1e-9), D = to - x;
+    const T = Math.max(300, RETURN_SLOW * D / vn);
+    return { from: x, D, T, k: D > 1e-9 ? Math.min(3, v * T / D) : 0, e: 0, x, done: D <= 1e-9 };
+  }
+  function glide(st, dt) {
+    st.e += dt;
+    const s = Math.min(1, st.e / st.T), s2 = s * s, s3 = s2 * s;
+    st.x = st.from + st.D * (st.k * (s - 2 * s2 + s3) + 3 * s2 - 2 * s3);
+    if (s >= 1) { st.x = st.from + st.D; st.done = true; }
+  }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch {} };
+
+  // ---------- layers with background blur ----------
+  // Every layer gets the same 5px background blur (see .layer > .blur).
+
+  // outline path (M/L/H/V/Z only, as exported) → points
+  function points(d) {
+    const t = d.match(/[MLHVZ]|-?\d*\.?\d+(?:e-?\d+)?/gi), pts = [];
+    let x = 0, y = 0, i = 0, cmd = 'M';
+    while (i < t.length) {
+      if (/[A-Z]/i.test(t[i])) cmd = t[i++].toUpperCase();
+      if (cmd === 'Z') continue;
+      if (cmd === 'H') x = +t[i++];
+      else if (cmd === 'V') y = +t[i++];
+      else { x = +t[i++]; y = +t[i++]; }
+      pts.push([x, y]);
+    }
+    return pts;
+  }
+  const maskOf = pts => `url("data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1080 1080' preserveAspectRatio='none'><polygon points='${
+      pts.map(([x, y]) => x.toFixed(2) + ',' + y.toFixed(2)).join(' ')}'/></svg>`)}")`;
+  const setMask = (el, pts) => { el.style.webkitMaskImage = el.style.maskImage = maskOf(pts); };
+
+  // Split a card's exported SVG into one positioned layer per top-level group, in paint order.
+  const layerOf = {};
+  function explode(card) {
+    const src = card.querySelector('svg.src');
+    const defs = document.createElementNS(NS, 'svg');
+    defs.setAttribute('class', 'defs'); defs.setAttribute('aria-hidden', 'true');
+    defs.appendChild(src.querySelector('defs'));
+    card.appendChild(defs);
+    for (const g of [...src.children].filter(n => n.tagName === 'g')) {
+      const layer = document.createElement('div');
+      layer.className = 'layer';
+      layer.blur = null;   // shadows the element's own blur() method until a pane is attached
+      // only shapes with a translucent fill get a blur pane (lines and open outlines don't)
+      const outline = g.querySelector('path'), a = outline.getAttribute('fill-opacity');
+      if (a) {
+        const blur = document.createElement('div');
+        blur.className = 'blur filled';
+        setMask(blur, points(outline.getAttribute('d')));
+        // move the outline's translucent fill onto the blur pane so it isn't painted twice
+        blur.style.setProperty('--fill-a', Math.round(a * 100) + '%');
+        outline.setAttribute('fill', 'none');
+        layer.appendChild(blur);
+        layer.blur = blur;
+      }
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 1080 1080'); svg.setAttribute('fill', 'none'); svg.setAttribute('aria-hidden', 'true');
+      svg.appendChild(g);
+      layer.appendChild(svg);
+      layer.svg = svg;
+      card.appendChild(layer);
+      layerOf[g.id] = layer;
+    }
+    src.remove();
+    const hits = document.createElementNS(NS, 'svg');
+    hits.setAttribute('class', 'hits-svg'); hits.setAttribute('viewBox', '0 0 1080 1080');
+    card.appendChild(hits);
+  }
+
+  // 03 needs a second cube for the conveyor: clone it into the source before splitting.
+  const holeSrc = $('#hole-cube');
+  const holeNext = holeSrc.cloneNode(true);
+  holeNext.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+  holeNext.id = 'hole-cube-next';
+  holeSrc.parentNode.insertBefore(holeNext, holeSrc);
+
+  ['#card-cubes', '#card-stack', '#card-hole', '#card-slices', '#card-orbit', '#card-grow'].forEach(s => explode($(s)));
+
+  // ---------- per-layer hover (01, 02, 04) ----------
+  // Every moving layer follows its own spring. Its target is how "hovered" it is: the layer
+  // under the cursor gets 1; with influence > 0, every other layer also gets a share that
+  // fades smoothly with the cursor's distance from its centre.
+  const HOVER = [
+    { card: '#card-cubes',  key: 'cubes', dir: 'up', spin: true, order: ['cubes-cube-1', 'cubes-base', 'cubes-cube-2', 'cubes-cube-3'] },
+    // 02 and 04 can also turn a quarter on hover (toggles): 02 to the right like 01's cubes;
+    // 04 is 02's drawing turned 90° on screen, so the same turn there reads as upward
+    { card: '#card-stack',  key: 'stack', dir: 'up', moveBase: true, spinBox: true, order: ['stack-base', 'stack-layer-1', 'stack-layer-2', 'stack-layer-3', 'stack-layer-4', 'stack-layer-5'] },
+    { card: '#card-slices', key: 'slices', dir: 'right', moveBase: true, spinBox: true, screenRot: true, spinSign: -1, order: ['slices-base', 'slices-layer-2', 'slices-layer-3', 'slices-layer-4'] },
+    // 06: the big cube stays put (and blocks what's behind it); each small cube owns the
+    // dashed connector that ties it to the big cube
+    { card: '#card-orbit',  key: 'orbit', dir: 'up', spin: true, fixed: ['orbit-big-cube'],
+      order: ['orbit-cube', 'orbit-cube-3', 'orbit-big-cube', 'orbit-cube-5', 'orbit-cube-6', 'orbit-cube-7', 'orbit-cube-9'],
+      conn: { 'orbit-cube': 5881, 'orbit-cube-3': 5889, 'orbit-cube-5': 5885, 'orbit-cube-6': 5886, 'orbit-cube-7': 5888, 'orbit-cube-9': 5890 } },
+  ].map(h => ({ ...h, card: $(h.card), p: null, hit: null, u: 1 }));
+  // bases stay put (they block what's behind them), except where a card lets its base move too
+  const isFixed = (h, id) => (id.endsWith('-base') && !h.moveBase) || (h.fixed || []).includes(id);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  // gradient stops used by a layer's inner edges (they live in the card's shared defs)
+  const stopsOf = layer => [...layer.svg.querySelectorAll('[stroke^="url(#"]')]
+    .map(el => document.getElementById(el.getAttribute('stroke').slice(5, -1)))
+    .filter(Boolean).flatMap(g => [...g.querySelectorAll('stop')]);
+
+  // Spinning cubes (01, 06): while a cube turns it is drawn from real 3D geometry; once it lands
+  // on a multiple of 90° it looks exactly like the Figma drawing, so the original paths come back.
+  const SPIN_AX = (() => { const c = Math.cos(Math.PI / 6), r = Math.SQRT1_2; return [[c, 0.5, r], [0, -1, r], [-c, 0.5, r]]; })();
+  const SPIN_EDGES = [];
+  for (let i = 0; i < 8; i++) for (let a = 0; a < 3; a++) if (!(i >> a & 1)) SPIN_EDGES.push([i, i | 1 << a, a]);
+  function cubeGeom(cx, cy, s, ang) {   // iso cube of edge s centred on (cx, cy), turned ang to the right
+    const cs = Math.cos(ang), sn = Math.sin(ang);
+    const view = ([X, Y, Z]) => {
+      const Xr = X * cs + Z * sn, Zr = -X * sn + Z * cs;
+      return [0, 1, 2].map(k => s * (Xr * SPIN_AX[0][k] + Y * SPIN_AX[1][k] + Zr * SPIN_AX[2][k]));
+    };
+    const P = [...Array(8)].map((_, i) => view([i & 1, i >> 1 & 1, i >> 2 & 1].map(v => v ? 0.5 : -0.5)));
+    const S = P.map(([x, y]) => [cx + x, cy + y]);
+    const faceZ = (b, sign) => { const n = [0, 0, 0]; n[b] = sign ? 1 : -1; return view(n)[2]; };
+    const inner = SPIN_EDGES.filter(([i, , a]) => [0, 1, 2].filter(b => b !== a).every(b => faceZ(b, i >> b & 1) > 1e-4))
+      .map(([i, j]) => P[i][2] >= P[j][2] ? [S[i], S[j]] : [S[j], S[i]]);   // from the nearer end
+    return { hull: hull(S), inner };
+  }
+  function spinRig(layer) {
+    const paths = [...layer.svg.querySelectorAll('path')];
+    const outline = paths[0], lines = paths.filter(p => (p.getAttribute('stroke') || '').startsWith('url(#'));
+    const grads = lines.map(p => document.getElementById(p.getAttribute('stroke').slice(5, -1)));
+    const pts = points(outline.getAttribute('d')), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const w = Math.max(...xs) - Math.min(...xs);
+    return {
+      outline, lines, grads, pts,
+      cx: (Math.max(...xs) + Math.min(...xs)) / 2, cy: (Math.max(...ys) + Math.min(...ys)) / 2,
+      s: w / (2 * Math.cos(Math.PI / 6)),
+      orig: { outline: outline.getAttribute('d'), lines: lines.map(l => l.getAttribute('d')),
+        grads: grads.map(g => ['x1', 'y1', 'x2', 'y2'].map(k => g.getAttribute(k))) },
+      a: 0, av: 0, target: 0, live: false,
+      draw(blur) { drawSpin(this, blur); }, restore(blur) { restoreSpin(this, blur); },
+    };
+  }
+
+  // Spinning boxes (02 slabs, 04 slices): any square box (edge s, height h) turning on its own
+  // axis. 04 is drawn a quarter turn round on screen, so it is worked out upright and turned
+  // back (local down = screen left). While it turns, an overlay draws all 12 edges, each fading
+  // with its two faces (as in 05) so nothing pops; at every quarter turn the Figma paths return.
+  let boxRigs = 0;
+  // hold: slabs' Figma edges hold full strength for their near half; cubes' fade all the way
+  function boxRig(layer, screenRot, hold = true) {
+    const paths = [...layer.svg.querySelectorAll('path')];
+    const outline = paths[0], inner = paths.filter(p => (p.getAttribute('stroke') || '').startsWith('url(#'));
+    const pts = points(outline.getAttribute('d')), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+    const W = Math.max(...xs) - Math.min(...xs), H = Math.max(...ys) - Math.min(...ys);
+    const [wl, hl] = screenRot ? [H, W] : [W, H];
+    const s = wl / (2 * Math.cos(Math.PI / 6)), h = hl - s;   // iso: top face is s tall on screen
+    const toScreen = screenRot ? ([x, y]) => [cx - y, cy + x] : ([x, y]) => [cx + x, cy + y];
+    const id = 'bx' + ++boxRigs;
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('visibility', 'hidden');
+    g.innerHTML = `<defs>${SPIN_EDGES.map((_, k) => `<linearGradient id="${id}g${k}" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#353232"/><stop offset="0.5" stop-color="#353232"/><stop offset="1" stop-color="#353232"/></linearGradient>`).join('')}</defs>
+      ${SPIN_EDGES.map((_, k) => `<line stroke="url(#${id}g${k})"/>`).join('')}`;
+    outline.after(g);
+    const lines = [...g.querySelectorAll('line')], grads = [...g.querySelectorAll('linearGradient')];
+    const stops = grads.map(gr => [...gr.querySelectorAll('stop')]);
+    const orig = outline.getAttribute('d'), REST = SPIN_AX[0][2], f = n => n.toFixed(2);
+    return {
+      a: 0, av: 0, target: 0, live: false,
+      draw(blur) {
+        const cs = Math.cos(this.a), sn = Math.sin(this.a);
+        const view = ([X, Y, Z]) => { const Xr = X * cs + Z * sn, Zr = -X * sn + Z * cs;
+          return [0, 1, 2].map(k => Xr * SPIN_AX[0][k] + Y * SPIN_AX[1][k] + Zr * SPIN_AX[2][k]); };
+        const half = [s / 2, h / 2, s / 2];
+        const P = [...Array(8)].map((_, i) => view([0, 1, 2].map(b => (i >> b & 1 ? 1 : -1) * half[b])));
+        const S = P.map(toScreen);
+        const faceZ = (b, sign) => { const n = [0, 0, 0]; n[b] = sign ? 1 : -1; return view(n)[2]; };
+        lines.forEach((ln, k) => {
+          const [i, j, a] = SPIN_EDGES[k];
+          const w = smooth(Math.min(...[0, 1, 2].filter(b => b !== a).map(b => faceZ(b, i >> b & 1))) / (0.6 * REST));
+          if (w <= 0.001) { ln.setAttribute('visibility', 'hidden'); return; }
+          ln.removeAttribute('visibility');
+          ln.setAttribute('stroke-opacity', w.toFixed(3));
+          // Figma: the height edge fades from its near end; on slabs the other edges hold full
+          // strength for their near half, then fade out
+          const near = clamp01((1 + (P[i][2] - P[j][2]) / (REST * half[a] * 2)) / 2);
+          const st = stops[k];
+          st[0].setAttribute('stop-opacity', near.toFixed(3));
+          st[1].setAttribute('stop-opacity', a === 1 || !hold ? '0.5' : '1');
+          st[2].setAttribute('stop-opacity', (1 - near).toFixed(3));
+          for (const el of [ln, grads[k]]) {
+            el.setAttribute('x1', f(S[i][0])); el.setAttribute('y1', f(S[i][1]));
+            el.setAttribute('x2', f(S[j][0])); el.setAttribute('y2', f(S[j][1]));
+          }
+        });
+        const hl2 = hull(S);
+        outline.setAttribute('d', 'M' + hl2.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
+        inner.forEach(p => p.setAttribute('visibility', 'hidden'));
+        g.removeAttribute('visibility');
+        if (blur) setMask(blur, hl2);
+      },
+      restore(blur) {   // back to the exact Figma paths
+        outline.setAttribute('d', orig);
+        inner.forEach(p => p.removeAttribute('visibility'));
+        g.setAttribute('visibility', 'hidden');
+        if (blur) setMask(blur, pts);
+      },
+    };
+  }
+  function drawSpin(r, blur) {
+    const f = n => n.toFixed(2), g = cubeGeom(r.cx, r.cy, r.s, r.a);
+    r.outline.setAttribute('d', 'M' + g.hull.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
+    r.lines.forEach((ln, k) => {
+      const e = g.inner[k];
+      ln.setAttribute('d', e ? `M${f(e[0][0])} ${f(e[0][1])}L${f(e[1][0])} ${f(e[1][1])}` : '');
+      if (e) [e[0][0], e[0][1], e[1][0], e[1][1]].forEach((v, i) => r.grads[k].setAttribute(['x1', 'y1', 'x2', 'y2'][i], f(v)));
+    });
+    if (blur) setMask(blur, g.hull);
+  }
+  function restoreSpin(r, blur) {   // back to the exact Figma paths
+    r.outline.setAttribute('d', r.orig.outline);
+    r.lines.forEach((ln, k) => ln.setAttribute('d', r.orig.lines[k]));
+    r.grads.forEach((g, k) => ['x1', 'y1', 'x2', 'y2'].forEach((a, i) => g.setAttribute(a, r.orig.grads[k][i])));
+    if (blur) setMask(blur, r.pts);
+  }
+
+  for (const h of HOVER) {
+    // fixed layers (bases, 06's big cube) never move, but get the same stroke tint on hover
+    h.springs = h.order.map(id => {
+      const layer = layerOf[id], pts = points(layer.svg.querySelector('path').getAttribute('d'));
+      const c = pts.reduce((a, [x, y]) => [a[0] + x / pts.length, a[1] + y / pts.length], [0, 0]);
+      // 06: each small cube's dashed connector lifts and tints along with it
+      const connLayer = h.conn && h.conn[id] ? layerOf[`orbit-conn-${h.conn[id]}`] : null;
+      const conn = connLayer ? [...connLayer.svg.querySelectorAll('[stroke="#686565"]')] : [];
+      const fixed = isFixed(h, id);
+      const spin = fixed ? null : h.spin ? spinRig(layer) : h.spinBox ? boxRig(layer, h.screenRot) : null;
+      return { id, layer, c, fixed, x: 0, v: 0, drawn: null, hot: null, tint: [...stopsOf(layer), ...conn],
+        moved: connLayer ? [layer, connLayer] : [layer], spin };
+    });
+    h.byId = Object.fromEntries(h.springs.map(sp => [sp.id, sp]));
+    const card = h.card, toFig = e => {
+      const r = card.getBoundingClientRect();
+      return [(e.clientX - r.left) / r.width * 1080, (e.clientY - r.top) / r.height * 1080];
+    };
+    card.addEventListener('pointermove', e => { h.p = toFig(e); });
+    card.addEventListener('pointerenter', e => { h.p = toFig(e); });
+    card.addEventListener('pointerleave', () => { h.p = null; h.hit = null; });
+    new ResizeObserver(() => { h.u = card.clientWidth / 1080; }).observe(card);
+  }
+
+  // Hit areas sit on top in the art's paint order and never move: each covers the layer's
+  // rest position plus its fully hovered one, so a layer can't slide out from under the
+  // cursor. Base gets one too, so it blocks whatever is behind it.
+  function buildHits() {
+    for (const h of HOVER) {
+      const hits = h.card.querySelector('.hits-svg');
+      hits.innerHTML = '';
+      const { strength } = cfg[h.key];
+      const [dx, dy] = h.dir === 'right' ? [strength, 0] : [0, -strength];
+      for (const id of h.order) {
+        const d = layerOf[id].svg.querySelector('path').getAttribute('d');
+        const g = document.createElementNS(NS, 'g');
+        g.innerHTML = isFixed(h, id) ? `<path class="hit" d="${d}"/>`
+          : `<path class="hit" d="${d}"/><path class="hit" d="${d}" transform="translate(${dx} ${dy})"/>`;
+        g.addEventListener('pointerenter', () => {
+          h.hit = id;
+          // each hover turns this cube one more step to the right
+          const r = h.byId[id] && h.byId[id].spin;
+          const o = cfg[h.key], deg = 'turn' in o ? (o.turn ? 90 : 0) : o.spin;
+          if (r && deg) r.target += (h.spinSign || 1) * deg * Math.PI / 180;
+        });
+        g.addEventListener('pointerleave', () => { if (h.hit === id) h.hit = null; });
+        hits.appendChild(g);
+      }
+    }
+  }
+
+  const falloff = t => t >= 1 ? 0 : 1 - t * t * (3 - 2 * t);   // smoothstep: 1 at the centre → 0 at the edge
+
+  function stepHover(dt) {
+    const { response } = CURVES[cfg.motion.curve];
+    const w = 2 * Math.PI * cfg.motion.speed / response, k = w * w, c = 2 * damping() * w;
+    for (const h of HOVER) {
+      const { strength, influence } = cfg[h.key], R = influence * INFLUENCE_RADIUS;
+      for (const sp of h.springs) {
+        let amt = 0;
+        if (cfg.preview) amt = 1;
+        else if (h.p) {
+          amt = h.hit === sp.id ? 1 : 0;
+          if (R > 0) amt = Math.max(amt, falloff(Math.hypot(h.p[0] - sp.c[0], h.p[1] - sp.c[1]) / R));
+        }
+        // the spring runs on the hover amount (0..1); Strength only scales the distance
+        const target = amt;
+        if (reduceMotion.matches) { sp.x = target; sp.v = 0; }
+        else if (Math.abs(target - sp.x) > 0.0004 || Math.abs(sp.v) > 0.0004) {
+          const n = Math.max(1, Math.ceil(dt / 4)), hs = dt / 1000 / n;   // 4ms substeps keep stiff springs stable
+          for (let i = 0; i < n; i++) { sp.v += (k * (target - sp.x) - c * sp.v) * hs; sp.x += sp.v * hs; }
+        } else { sp.x = target; sp.v = 0; }
+        const px = (sp.x * strength * h.u).toFixed(2);
+        if (!sp.fixed && sp.drawn !== px) {
+          const tf = h.dir === 'right' ? `translate3d(${px}px,0,0)` : `translate3d(0,${-px}px,0)`;
+          sp.moved.forEach(el => el.style.transform = tf);
+          sp.drawn = px;
+        }
+        // hover tint: this layer's inner edges (and its connector, if it has one), on the same
+        // spring as the movement so both land together
+        const hot = clamp01(sp.x).toFixed(3);
+        if (sp.hot !== hot) { sp.tint.forEach(el => el.style.setProperty('--hot', hot)); sp.hot = hot; }
+        // spin on the same spring settings as the lift
+        const r = sp.spin;
+        if (r && (r.live || r.a !== r.target)) {
+          if (reduceMotion.matches) { r.a = r.target; r.av = 0; }
+          else {
+            const n = Math.max(1, Math.ceil(dt / 4)), hs = dt / 1000 / n;
+            for (let i = 0; i < n; i++) { r.av += (k * (r.target - r.a) - c * r.av) * hs; r.a += r.av * hs; }
+          }
+          if (Math.abs(r.target - r.a) < 1e-4 && Math.abs(r.av) < 1e-4) {
+            r.a = r.target; r.av = 0; r.live = false;
+            const quarter = Math.PI / 2, m = r.a / quarter;
+            if (Math.abs(m - Math.round(m)) < 1e-6) r.restore(sp.layer.blur); else r.draw(sp.layer.blur);
+          } else { r.live = true; r.draw(sp.layer.blur); }
+        }
+      }
+    }
+  }
+
+  function applyHover() { buildHits(); }
+
+  // ---------- 07: cubes grow — the hovered cube grows, the others make room ----------
+  // The cube under the cursor scales up by Size around its own centre; every other cube is
+  // pushed straight away from it, Push px at the nearest and fading out by Reach. Each cube's
+  // scale and offset ride the shared hover spring, so sliding across the grid flows.
+  const growCard = $('#card-grow');
+  let growHit = null;
+  const growCubes = [...growCard.querySelectorAll(':scope > .layer')].map((layer, i) => {
+    const outline = layer.svg.querySelector('path'), pts = points(outline.getAttribute('d'));
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const c = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+    layer.style.transformOrigin = `${(c[0] / 10.8).toFixed(3)}% ${(c[1] / 10.8).toFixed(3)}%`;
+    const spin = boxRig(layer, false, false);   // cubes turn to the right on hover, as in 01
+    return { layer, c, i, d: outline.getAttribute('d'), tint: stopsOf(layer), spin,
+      s: 0, sv: 0, x: 0, xv: 0, y: 0, yv: 0, drawn: null, hot: null };
+  });
+  {   // hit areas at rest, in paint order, so the hovered cube never slides out from under the cursor
+    const hits = growCard.querySelector('.hits-svg');
+    for (const q of growCubes) {
+      const el = document.createElementNS(NS, 'path');
+      el.setAttribute('class', 'hit'); el.setAttribute('d', q.d);
+      el.addEventListener('pointerenter', () => {
+        growHit = q;
+        if (cfg.grow.spin) q.spin.target += cfg.grow.spin * Math.PI / 180;   // one more turn per hover
+      });
+      el.addEventListener('pointerleave', () => { if (growHit === q) growHit = null; });
+      hits.appendChild(el);
+    }
+    growCard.addEventListener('pointerleave', () => growHit = null);
+  }
+  function stepGrow(dt) {
+    const { response } = CURVES[cfg.motion.curve];
+    const w = 2 * Math.PI * cfg.motion.speed / response, k = w * w, c = 2 * damping() * w;
+    const { size, push, reach } = cfg.grow;
+    const hot = cfg.preview ? growCubes[4] : growHit;   // Hover everything: the middle cube
+    const n = Math.max(1, Math.ceil(dt / 4)), hs = dt / 1000 / n;
+    for (const q of growCubes) {
+      let ts = 0, tx = 0, ty = 0;
+      if (hot === q) ts = 1;
+      else if (hot) {
+        const dx = q.c[0] - hot.c[0], dy = q.c[1] - hot.c[1], d = Math.hypot(dx, dy) || 1;
+        const f = reach > 0 ? falloff(d / reach) : 0;
+        tx = dx / d * push * f; ty = dy / d * push * f;
+      }
+      if (reduceMotion.matches) { q.s = ts; q.x = tx; q.y = ty; q.sv = q.xv = q.yv = 0; }
+      else for (let j = 0; j < n; j++) {
+        q.sv += (k * (ts - q.s) - c * q.sv) * hs; q.s += q.sv * hs;
+        q.xv += (k * (tx - q.x) - c * q.xv) * hs; q.x += q.xv * hs;
+        q.yv += (k * (ty - q.y) - c * q.yv) * hs; q.y += q.yv * hs;
+      }
+      const tf = `translate3d(calc(${q.x.toFixed(2)} * var(--u)), calc(${q.y.toFixed(2)} * var(--u)), 0) scale(${(1 + q.s * size).toFixed(4)})`;
+      if (q.drawn !== tf) {
+        q.layer.style.transform = tf;
+        q.layer.style.zIndex = q.i + Math.round(Math.max(0, q.s) * 100);   // the growing cube draws on top
+        q.drawn = tf;
+      }
+      const h = clamp01(q.s).toFixed(3);
+      if (q.hot !== h) { q.tint.forEach(el => el.style.setProperty('--hot', h)); q.hot = h; }
+      // spin on the same spring; at every quarter turn the Figma paths come back
+      const r = q.spin;
+      if (r.live || r.a !== r.target) {
+        if (reduceMotion.matches) { r.a = r.target; r.av = 0; }
+        else for (let j = 0; j < n; j++) { r.av += (k * (r.target - r.a) - c * r.av) * hs; r.a += r.av * hs; }
+        if (Math.abs(r.target - r.a) < 1e-4 && Math.abs(r.av) < 1e-4) {
+          r.a = r.target; r.av = 0; r.live = false;
+          const m = r.a / (Math.PI / 2);
+          if (Math.abs(m - Math.round(m)) < 1e-6) r.restore(q.layer.blur); else r.draw(q.layer.blur);
+        } else { r.live = true; r.draw(q.layer.blur); }
+      }
+    }
+  }
+
+  // ---------- 03: cube into hole — linear conveyor ----------
+  // The small cube's back face has exactly the hole's shape, so it slides along the isometric
+  // depth axis at constant speed; once its back face reaches the wall it's cut at the wall
+  // plane, getting shallower until its front face sits in the hole and it's gone. A second
+  // cube fades in behind it, one cube-length of travel back, so the loop has no seam or pause.
+  const holeCard = $('#card-hole');
+  const AX = { x: Math.cos(Math.PI / 6), y: -0.5 };  // into the big cube's left face
+  const EDGE = 60.1;                                  // cube edge length on screen
+  const CONTACT = 107.5;                              // travel until the back face meets the wall
+  const TRAVEL = CONTACT + EDGE;                      // travel until the cube is fully inside
+  // front (left) face corners at rest: top-left, top-right, bottom-right, bottom-left
+  const F = [[300, 539.041], [352, 569.1], [352, 629.215], [300, 599.157]];
+
+  const cubes = ['hole-cube', 'hole-cube-next'].map(id => {
+    const layer = layerOf[id], g = layer.svg.querySelector('g'), paths = g.querySelectorAll('path');
+    return { layer, g, outline: paths[0], depthLine: paths[1] };   // paths[1]: edge along the depth axis
+  });
+
+  function drawCube(c, s, opacity) {
+    const depth = Math.min(EDGE, Math.max(0, TRAVEL - s));   // part still outside the wall
+    const hidden = depth <= 0.01 || opacity <= 0.001;
+    c.layer.style.visibility = hidden ? 'hidden' : '';
+    if (hidden) return;
+    const vx = AX.x * depth, vy = AX.y * depth, ox = AX.x * s, oy = AX.y * s;
+    const [A, B, C, D] = F;
+    const hex = [A, D, C, [C[0] + vx, C[1] + vy], [B[0] + vx, B[1] + vy], [A[0] + vx, A[1] + vy]];
+    const p = ([x, y]) => `${x.toFixed(3)} ${y.toFixed(3)}`;
+    c.outline.setAttribute('d', 'M' + hex.map(p).join('L') + 'Z');
+    c.depthLine.setAttribute('d', `M${p(hex[4])}L${p(B)}`);
+    c.g.setAttribute('transform', `translate(${ox.toFixed(3)} ${oy.toFixed(3)})`);
+    // the mask shape only changes while the cube is crossing the wall; otherwise just move it
+    const key = depth.toFixed(2);
+    if (c.maskKey !== key) { setMask(c.layer.blur, hex); c.maskKey = key; }
+    c.layer.blur.style.webkitMaskPosition = c.layer.blur.style.maskPosition =
+      `calc(${ox.toFixed(3)} * var(--u)) calc(${oy.toFixed(3)} * var(--u))`;
+    // fade the pane and the drawing separately: opacity on their parent would cut the
+    // blur off from what's behind it
+    c.layer.blur.style.opacity = c.layer.svg.style.opacity = opacity.toFixed(3);
+  }
+
+  let u = 0, vel = 0, last = performance.now(), holeHover = false, holeRet = null;
+  function renderHole() {
+    const s = u * TRAVEL;
+    drawCube(cubes[0], s, 1);                                         // current cube, heading in
+    const sn = s - TRAVEL;                                            // next cube, one length behind
+    drawCube(cubes[1], sn, clamp01(1 + sn / (cfg.motion.fade * TRAVEL)));
+  }
+  holeCard.addEventListener('pointerenter', () => holeHover = true);
+  holeCard.addEventListener('pointerleave', () => holeHover = false);
+
+  // ---------- 05: cube scale — vertical conveyor with a spin on the cube's own axis ----------
+  // Four cubes ride five slots up the frame: spawn (fading in) → bottom → middle (big) →
+  // top → exit (fading out). Each step every cube moves up one slot on one ease-in-out curve;
+  // spawn and exit sit one slot-spacing past the ends, so the leaving cube keeps the others'
+  // speed. It fades out in the first half of the move and the new cube fades in in the second,
+  // so there are never more than three on screen. Once the one heading to
+  // the middle has its final position and scale, it spins to the right on its own vertical
+  // axis, in place. A cube turned a multiple of 90° on that axis looks exactly like it did,
+  // so the loop has no seam. The cubes are drawn from true 3D geometry, not the Figma paths.
+  const SCALE_LOOP_MS = 2600;   // one step of the conveyor at speed 1×
+  const scaleCard = $('#card-scale');
+  const C30 = Math.cos(Math.PI / 6), R2 = Math.SQRT1_2;
+  // world axes (X, Y up, Z) in view space: x right, y down, z toward the viewer (isometric)
+  const AXES = [[C30, 0.5, R2], [0, -1, R2], [-C30, 0.5, R2]];
+  const EDGE_S = 60.04;                                   // small cube: 104 × 120 in Figma
+  // corners in world space (X, Y up, Z), ±half an edge
+  const CORNERS = [...Array(8)].map((_, i) => [i & 1, (i >> 1) & 1, (i >> 2) & 1].map(v => v ? 0.5 : -0.5));
+  // turn a world point by `a` around the vertical axis (positive = front edge moves right),
+  // then take it to view space
+  const toView = ([X, Y, Z], cs, sn) => {
+    const Xr = X * cs + Z * sn, Zr = -X * sn + Z * cs;
+    return [0, 1, 2].map(k => EDGE_S * (Xr * AXES[0][k] + Y * AXES[1][k] + Zr * AXES[2][k]));
+  };
+  const EDGES = [];
+  for (let i = 0; i < 8; i++) for (let a = 0; a < 3; a++) if (!(i >> a & 1)) EDGES.push([i, i | 1 << a, a]);
+  const EDGE_FADE_Z = 0.6;   // an edge is fully drawn while both its faces turn at least this much toward the viewer (of rest)
+  const SMALL = [1, 1], BIG = [346 / 104, 409.95 / 120.08];   // Figma: 104×120 small, 346×410 big
+  const SLOTS = [
+    { y: 884.1 + (884.1 - 539.97), s: SMALL },   // spawn: one spacing below the bottom
+    { y: 884.1,  s: SMALL },                     // bottom
+    { y: 539.97, s: BIG },                       // middle
+    { y: 195.1,  s: SMALL },                     // top
+    { y: 195.1 - (539.97 - 195.1), s: SMALL },   // exit: one spacing above the top
+  ];
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // ease-in-out: soft start and end, fastest at the midpoint, no overshoot
+  const easeIO = t => (1 - Math.cos(Math.PI * clamp01(t))) / 2;
+
+  function hull(pts) {   // monotone chain convex hull
+    const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const q of p) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+    for (const q of p.reverse()) { while (up.length > 1 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  }
+
+  const scaleCubes = [0, 1, 2, 3].map(i => {
+    const layer = document.createElement('div');
+    layer.className = 'layer';
+    const blur = document.createElement('div');
+    blur.className = 'blur filled';
+    blur.style.setProperty('--fill-a', '50%');
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 1080 1080'); svg.setAttribute('fill', 'none'); svg.setAttribute('aria-hidden', 'true');
+    // one line per cube edge (12): while spinning, edges fade in and out instead of popping
+    svg.innerHTML = `<defs>${EDGES.map((_, k) => `<linearGradient id="sc${i}g${k}" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#353232"/><stop offset="1" stop-color="#353232" stop-opacity="0"/></linearGradient>`).join('')}</defs>
+      ${EDGES.map((_, k) => `<line stroke="url(#sc${i}g${k})"/>`).join('')}<path stroke="#FDFCFC"/>`;
+    layer.append(blur, svg);
+    scaleCard.appendChild(layer);
+    const grads = [...svg.querySelectorAll('linearGradient')];
+    return { layer, blur, svg, lines: [...svg.querySelectorAll('line')], grads,
+      stops: grads.map(g => [...g.querySelectorAll('stop')]), outline: svg.querySelector('path'), maskKey: null };
+  });
+
+  function drawScaleCube(c, cx, cy, sx, sy, th, o) {
+    if (o <= 0.001) { c.layer.style.visibility = 'hidden'; return; }
+    c.layer.style.visibility = '';
+    // spin on the cube's own vertical axis: side faces turn in and out of view
+    const cs = Math.cos(th), sn = Math.sin(th);
+    const P = CORNERS.map(w => toView(w, cs, sn));
+    const S = P.map(([x, y]) => [cx + x * sx, cy + y * sy]);
+    const faceZ = (b, sign) => { const n = [0, 0, 0]; n[b] = sign ? 1 : -1; return toView(n, cs, sn)[2]; };
+    // inner edges: an edge shows as much as the less visible of its two faces faces the viewer,
+    // so as a side face turns edge-on its edges fade out and the next face's fade in (no pop).
+    // Along the edge the gradient runs from the nearer end; when both ends are equally near it
+    // blends smoothly instead of flipping. At rest this is exactly the Figma drawing.
+    const REST_Z = EDGE_S * R2, f = n => n.toFixed(2);
+    c.lines.forEach((ln, k) => {
+      const [i, j, a] = EDGES[k];
+      const faces = [0, 1, 2].filter(b => b !== a).map(b => faceZ(b, i >> b & 1));
+      const w = smooth(Math.min(...faces) / (EDGE_FADE_Z * REST_Z));
+      if (w <= 0.001) { ln.setAttribute('visibility', 'hidden'); return; }
+      ln.removeAttribute('visibility');
+      ln.setAttribute('stroke-opacity', w.toFixed(3));
+      const near = clamp01((1 + (P[i][2] - P[j][2]) / REST_Z) / 2);   // 1: i is the near end
+      c.stops[k][0].setAttribute('stop-opacity', near.toFixed(3));
+      c.stops[k][1].setAttribute('stop-opacity', (1 - near).toFixed(3));
+      for (const el of [ln, c.grads[k]]) {
+        el.setAttribute('x1', f(S[i][0])); el.setAttribute('y1', f(S[i][1]));
+        el.setAttribute('x2', f(S[j][0])); el.setAttribute('y2', f(S[j][1]));
+      }
+    });
+    const H = hull(S);
+    c.outline.setAttribute('d', 'M' + H.map(([x, y]) => `${f(x)} ${f(y)}`).join('L') + 'Z');
+    // blur pane: mask the silhouette inside its own box; only rebuild the image when the
+    // shape changes (it only does while flipping), otherwise just move and resize it
+    const xs = H.map(p => p[0]), ys = H.map(p => p[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+    const norm = H.map(([x, y]) => [(x - x0) / w * 1000, (y - y0) / h * 1000]);
+    const key = norm.map(([x, y]) => `${x.toFixed(0)},${y.toFixed(0)}`).join(' ');
+    if (c.maskKey !== key) {
+      const img = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 1000' preserveAspectRatio='none'><polygon points='${key}'/></svg>`)}")`;
+      c.blur.style.webkitMaskImage = c.blur.style.maskImage = img;
+      c.maskKey = key;
+    }
+    c.blur.style.webkitMaskSize = c.blur.style.maskSize = `calc(${f(w)} * var(--u)) calc(${f(h)} * var(--u))`;
+    c.blur.style.webkitMaskPosition = c.blur.style.maskPosition = `calc(${f(x0)} * var(--u)) calc(${f(y0)} * var(--u))`;
+    c.blur.style.opacity = c.svg.style.opacity = o.toFixed(3);
+    c.layer.style.zIndex = Math.round(sx * 10);   // the bigger cube draws on top
+  }
+
+  let scP = 0, scVel = 0, scHover = false, scRet = null;
+  // share of a step for: move, hold, spin (the rest is the hold after the spin)
+  const SCALE_PHASES = [0.36, 0.09, 0.46];
+  // cubes fade by distance to the frame edge too, so none is ever cut off by it: gone EDGE_PAD
+  // px before the edge, fully visible EDGE_FADE px further in (both rest slots clear it)
+  const EDGE_PAD = 15, EDGE_FADE = 100;
+  const edgeFade = (y, sy) => {
+    const h = EDGE_S * sy;   // half the cube's height on screen
+    return smooth(Math.min(y - h - EDGE_PAD, 1080 - EDGE_PAD - (y + h)) / EDGE_FADE);
+  };
+  function renderScale() {
+    const spin = (cfg.scale.spin || 0) * Math.PI / 180;
+    const step = Math.floor(scP), f = scP - step;
+    // one step: move + scale into place, a short hold, the spin, another short hold, then the
+    // next step moves on. Without a spin the move takes the whole step.
+    const [MOVE, HOLD, SPIN] = spin ? SCALE_PHASES : [1, 0, 0];
+    const tm = clamp01(f / MOVE), move = easeIO(tm);
+    const turn = spin ? easeIO((f - MOVE - HOLD) / SPIN) : 0;
+    // the leaving cube is gone by the midpoint of the move and the new one only starts there;
+    // shared Fades sets how much of each half the fade takes
+    const fw = Math.max(0.01, cfg.motion.fade) * 0.5;
+    const fadeOut = clamp01((0.5 - move) / fw);
+    // the new cube arrives on its own ease-out over the second half: it enters already moving
+    // fast from Entry px below and settles into the bottom slot with the others
+    const pin = clamp01((tm - 0.5) / 0.5), fadeIn = clamp01(pin / (fw * 2));
+    const entryY = SLOTS[1].y + (cfg.scale.entry || 0) * Math.pow(1 - pin, 3);
+    scaleCubes.forEach((c, i) => {
+      const base = ((i + step) % 4 + 4) % 4, slot = base + move;
+      const k = Math.min(3, Math.floor(slot)), t = slot - k, A = SLOTS[k], B = SLOTS[k + 1];
+      // spin depends only on the slot, so the loop can also run backwards (Return to rest):
+      // a fresh cube starts at 0 (the page at rest matches the Figma frame), spins while it
+      // heads to the middle, and keeps that turn until it leaves
+      const th = base === 1 ? spin * turn : base >= 2 ? spin : 0;
+      const y = base === 0 ? entryY : lerp(A.y, B.y, t);
+      const sy = lerp(A.s[1], B.s[1], t);
+      const o = base === 0 ? Math.min(fadeIn, edgeFade(y, sy)) : base === 3 ? Math.min(fadeOut, edgeFade(y, sy)) : 1;
+      drawScaleCube(c, 540, y, lerp(A.s[0], B.s[0], t), sy, th, o);
+    });
+  }
+  scaleCard.addEventListener('pointerenter', () => scHover = true);
+  scaleCard.addEventListener('pointerleave', () => scHover = false);
+
+  function tick(now) {
+    const dt = Math.min(64, now - last); last = now;
+    stepHover(dt);
+    stepGrow(dt);
+    const sp = cfg.motion.speed;
+    const wasHole = vel, wasScale = scVel;
+    const holeOn = holeHover || cfg.preview;
+    if (!holeOn && (holeRet || vel > 0 || u !== 0)) {
+      // Return to rest: finish the cycle (u = 1 looks the same as u = 0)
+      if (!holeRet) holeRet = startGlide(u, vel * sp / BASE_LOOP_MS, sp / BASE_LOOP_MS);
+      vel = ramp(vel, false, dt);                       // only fades the tint now
+      if (!holeRet.done) { glide(holeRet, dt); u = holeRet.x; renderHole(); }
+      if (holeRet.done) { u = ((u % 1) + 1) % 1; renderHole(); if (vel === 0) holeRet = null; }
+    } else {
+      if (holeRet) { holeRet = null; u = ((u % 1) + 1) % 1; }
+      vel = ramp(vel, holeOn, dt);
+      if (vel > 0) {
+        u = (u + dt * vel * sp / BASE_LOOP_MS) % 1;
+        renderHole();
+      }
+    }
+    // loops tint the inner edges of the whole card while they play
+    if (vel !== wasHole) holeCard.style.setProperty('--hot', vel.toFixed(3));
+    const scOn = scHover || cfg.preview;
+    if (!scOn && (scRet || scVel > 0 || scP % 1 !== 0)) {
+      // Return to rest: finish the step it is in; every step boundary shows the Figma frame
+      if (!scRet) scRet = startGlide(scP, scVel * sp / SCALE_LOOP_MS, sp / SCALE_LOOP_MS);
+      scVel = ramp(scVel, false, dt);
+      if (!scRet.done) { glide(scRet, dt); scP = scRet.x; renderScale(); }
+      if (scRet.done) { scP = ((scP % 4) + 4) % 4; renderScale(); if (scVel === 0) scRet = null; }
+    } else {
+      if (scRet) { scRet = null; scP = ((scP % 4) + 4) % 4; }
+      scVel = ramp(scVel, scOn, dt);
+      if (scVel > 0) {
+        scP = (scP + dt * scVel * sp / SCALE_LOOP_MS) % 4;
+        renderScale();
+      }
+    }
+    if (scVel !== wasScale) scaleCard.style.setProperty('--hot', scVel.toFixed(3));
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- controls ----------
+  const panel = $('#panel');
+  // each spring's step response on a shared 1.6s time axis, so the icons also compare speed
+  // (drawn with the current Bounce, so the icons show the overshoot too)
+  const curveIcon = ({ response }) => {
+    const w = 2 * Math.PI / response, k = w * w, c = 2 * damping() * w, T = 1.6, N = 64, hs = T / N / 8;
+    let x = 0, v = 0, d = 'M4 30';
+    for (let i = 1; i <= N; i++) {
+      for (let j = 0; j < 8; j++) { v += (k * (1 - x) - c * v) * hs; x += v * hs; }
+      d += `L${(4 + i / N * 72).toFixed(1)} ${(30 - x * 24).toFixed(1)}`;
+    }
+    return `<svg viewBox="0 0 80 34" aria-hidden="true"><path d="${d}"/></svg>`;
+  };
+  // Side panel: only what every animation shares
+  const SECTIONS = [
+    { title: 'Motion', note: 'Shared by every animation on the page. Loops always finish their cycle and come to rest when the pointer leaves.', key: 'motion', fields: [
+      { k: 'speed',     label: 'Speed',      min: 0.25, max: 3, step: 0.05, fmt: v => v.toFixed(2) + '×' },
+      { k: 'curve', type: 'curves' },
+      { k: 'bounce',    label: 'Bounce',     min: 0, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+      { k: 'fade',      label: 'Fades',      min: 0.1, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+      { k: 'smoothing', label: 'Start/stop', min: 0, max: 1000, step: 10, fmt: v => v + 'ms' },
+    ]},
+    { title: 'BG Blur', note: 'Background blur behind every layer.', key: 'look', fields: [
+      { k: 'blur', label: 'Blur', min: 0, max: 24, step: 1, fmt: v => v + 'px' },
+    ]},
+  ];
+  // Each card's own parameters, in a collapsed dropdown inside the card
+  const px = v => v + 'px', pct = v => Math.round(v * 100) + '%', deg = v => v + '°';
+  const LIFT = [
+    { k: 'strength',  label: 'Strength',  min: 0, max: 60, step: 1, fmt: px },
+    { k: 'influence', label: 'Influence', min: 0, max: 1, step: 0.01, fmt: pct },
+  ];
+  const SPIN = { k: 'spin', label: 'Spin', min: 0, max: 360, step: 90, fmt: deg };
+  const CARD_PARAMS = {
+    cubes:  { note: 'Influence spreads the hover to nearby layers; Spin turns the hovered cube to the right.', fields: [...LIFT, SPIN] },
+    stack:  { note: 'Influence spreads the hover to nearby layers.', fields: [...LIFT, { k: 'turn', type: 'check', label: 'Turn 90° to the right' }] },
+    slices: { note: 'Influence spreads the hover to nearby layers.', fields: [...LIFT, { k: 'turn', type: 'check', label: 'Turn 90° upward' }] },
+    scale:  { note: 'Spin on the cube’s own axis once it lands in the middle. Entry: how far below the new cube starts, so it comes in with momentum.', fields: [
+      SPIN, { k: 'entry', label: 'Entry', min: 0, max: 400, step: 10, fmt: px }] },
+    orbit:  { note: 'Influence spreads the hover to nearby satellites; Spin turns the hovered one to the right.', fields: [...LIFT, SPIN] },
+    grow:   { note: 'The hovered cube grows by Size and turns by Spin; the others move away from it, Push px at the nearest, fading out by Reach.', fields: [
+      { k: 'size',  label: 'Size',  min: 0, max: 1, step: 0.05, fmt: v => '+' + pct(v) },
+      { k: 'push',  label: 'Push',  min: 0, max: 120, step: 2, fmt: px },
+      { k: 'reach', label: 'Reach', min: 150, max: 900, step: 10, fmt: px },
+      SPIN] },
+  };
+
+  function applyLook() { document.documentElement.style.setProperty('--blur', cfg.look.blur + 'px'); }
+  function applyLayout() {
+    document.querySelectorAll('.grid').forEach(g => g.dataset.cols = cfg.layout.cols);
+    document.querySelectorAll('#cols button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.v === cfg.layout.cols));
+  }
+  document.querySelectorAll('#cols button').forEach(b => b.onclick = () => { cfg.layout.cols = +b.dataset.v; save(); applyLayout(); });
+
+  function applyAll() { applyHover(); renderHole(); renderScale(); applyLook(); applyLayout(); }
+
+  // one control row: a slider, a checkbox or the curve presets, bound to obj[f.k]
+  function fieldRow(f, obj, id) {
+    const row = document.createElement('div');
+    if (f.type === 'curves') {
+      row.className = 'curves'; row.setAttribute('role', 'group'); row.setAttribute('aria-label', 'Curve');
+      row.innerHTML = Object.entries(CURVES).map(([k, c]) =>
+        `<button class="curve" data-k="${k}" aria-pressed="${obj.curve === k}" title="spring · ${c.response}s">${curveIcon(c)}${c.label}</button>`).join('');
+      row.querySelectorAll('button').forEach(b => b.onclick = () => {
+        obj.curve = b.dataset.k; save(); applyAll();
+        row.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+      });
+    } else if (f.type === 'check') {
+      row.innerHTML = `<label class="check"><input id="${id}" type="checkbox" ${obj[f.k] ? 'checked' : ''}> ${f.label}</label>`;
+      row.querySelector('input').onchange = e => { obj[f.k] = e.target.checked; save(); applyAll(); };
+    } else {
+      row.className = 'row';
+      row.innerHTML = `<label for="${id}">${f.label}</label>
+        <input id="${id}" type="range" min="${f.min}" max="${f.max}" step="${f.step}" value="${obj[f.k]}"><output>${f.fmt(obj[f.k])}</output>`;
+      const inp = row.querySelector('input'), out = row.querySelector('output');
+      inp.oninput = () => {
+        obj[f.k] = +inp.value; out.textContent = f.fmt(+inp.value); save(); applyAll();
+        if (f.k === 'bounce') panel.querySelectorAll('.curve').forEach(b => {   // redraw the curves with the new bounce
+          b.querySelector('svg').outerHTML = curveIcon(CURVES[b.dataset.k]);
+        });
+      };
+    }
+    return row;
+  }
+
+  // Customize parameters: a closed dropdown in each card that has its own settings
+  function buildCardParams(key) {
+    const card = $('#card-' + key), def = CARD_PARAMS[key];
+    let tune = card.querySelector('.tune');
+    const wasOpen = !!(tune && tune.open);
+    if (!tune) {
+      tune = document.createElement('details');
+      tune.className = 'tune';
+      card.appendChild(tune);
+    }
+    tune.open = wasOpen;
+    tune.innerHTML = `<summary>Customize parameters</summary><div class="tune-body"><p>${def.note}</p></div>`;
+    const body = tune.querySelector('.tune-body');
+    for (const f of def.fields) body.appendChild(fieldRow(f, cfg[key], `${key}-${f.k}`));
+    const reset = document.createElement('button');
+    reset.className = 'link'; reset.type = 'button'; reset.textContent = 'Reset this card';
+    reset.onclick = () => { cfg[key] = clone(DEFAULTS[key]); save(); buildCardParams(key); applyAll(); };
+    body.appendChild(reset);
+  }
+  const buildAllCardParams = () => Object.keys(CARD_PARAMS).forEach(buildCardParams);
+
+  function buildPanel() {
+    panel.innerHTML = '';
+    for (const sec of SECTIONS) {
+      panel.insertAdjacentHTML('beforeend', `<h2>${sec.title}</h2><p>${sec.note}</p>`);
+      for (const f of sec.fields) panel.appendChild(fieldRow(f, cfg[sec.key], `${sec.key}-${f.k}`));
+    }
+    panel.insertAdjacentHTML('beforeend', `
+      <h2>Preview</h2>
+      <label class="check"><input id="preview" type="checkbox" ${cfg.preview ? 'checked' : ''}> Hover everything</label>
+      <div class="actions"><button class="btn" id="copy">Copy config JSON</button><button class="btn" id="reset">Reset all</button></div>
+      <div class="toast" id="toast"></div>`);
+    $('#preview').onchange = e => {
+      cfg.preview = e.target.checked;
+      applyAll();
+    };
+    $('#copy').onclick = async () => {
+      const lift = k => ({ strength: cfg[k].strength, influence: cfg[k].influence, influenceRadiusPx: Math.round(cfg[k].influence * INFLUENCE_RADIUS) });
+      const txt = JSON.stringify({
+        motion: { speed: cfg.motion.speed, curve: cfg.motion.curve, bounce: cfg.motion.bounce, fades: cfg.motion.fade,
+          startStopMs: cfg.motion.smoothing, returnToRest: { direction: 'always forward, finishes the cycle', curve: 'cubic Hermite ease-out from current speed', durationVsFullSpeed: RETURN_SLOW },
+          hoverSpring: { responseS: +(CURVES[cfg.motion.curve].response / cfg.motion.speed).toFixed(3), damping: +damping().toFixed(3) },
+          timedMoves: 'smootherstep + bounce overshoot' },
+        backgroundBlur: `blur(${cfg.look.blur}px), every layer`,
+        cubes: { ...lift('cubes'), spinDeg: cfg.cubes.spin },
+        stack: { ...lift('stack'), turn: cfg.stack.turn ? '90° right' : false },
+        hole: { loopMs: Math.round(BASE_LOOP_MS / cfg.motion.speed), motion: 'linear' },
+        slices: { ...lift('slices'), turn: cfg.slices.turn ? '90° up' : false },
+        scale: { stepMs: Math.round(SCALE_LOOP_MS / cfg.motion.speed), phases: { move: SCALE_PHASES[0], hold: SCALE_PHASES[1], spin: SCALE_PHASES[2], holdAfter: +(1 - SCALE_PHASES.reduce((a, b) => a + b)).toFixed(2) },
+          edgeFade: { goneBeforeEdgePx: EDGE_PAD, fadePx: EDGE_FADE }, spinDeg: cfg.scale.spin, spinAxis: 'own vertical axis, to the right',
+          moveCurve: 'sine ease-in-out', maxCubesOnScreen: 3, fadeShareOfHalfStep: cfg.motion.fade,
+          entry: { fromPx: cfg.scale.entry, curve: 'cubic ease-out over the second half of the move' } },
+        orbit: { ...lift('orbit'), spinDeg: cfg.orbit.spin },
+        grow: { sizePct: Math.round(cfg.grow.size * 100), pushPx: cfg.grow.push, reachPx: cfg.grow.reach, spinDeg: cfg.grow.spin, motion: 'shared hover spring', push: 'radially away from the hovered cube, smoothstep falloff' },
+        cardsPerRow: cfg.layout.cols,
+      }, null, 2);
+      try { await navigator.clipboard.writeText(txt); $('#toast').textContent = 'Copied to clipboard.'; }
+      catch {
+        let ta = panel.querySelector('.copy-fallback');
+        if (!ta) { ta = document.createElement('textarea'); ta.className = 'copy-fallback'; ta.id = 'copy-fallback'; ta.readOnly = true; panel.appendChild(ta); }
+        ta.value = txt; ta.focus(); ta.select();
+        $('#toast').textContent = 'Clipboard unavailable here: the config is selected below, copy it with Ctrl+C.';
+      }
+    };
+    $('#reset').onclick = () => {
+      cfg = clone(DEFAULTS); save();
+      buildPanel(); buildAllCardParams(); applyAll();
+    };
+  }
+
+  // theme
+  let theme = null;
+  try { theme = localStorage.getItem(KEY + '-theme'); } catch {}
+  function setTheme(v) {
+    if (v === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = v;
+    try { localStorage.setItem(KEY + '-theme', v); } catch {}
+    document.querySelectorAll('#theme button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === v));
+  }
+  document.querySelectorAll('#theme button').forEach(b => b.onclick = () => setTheme(b.dataset.v));
+
+  if (theme) setTheme(theme);
+  else document.querySelectorAll('#theme button').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.v === (document.documentElement.dataset.theme || 'system')));
+  buildPanel();
+  buildAllCardParams();
+  applyAll();
+  requestAnimationFrame(tick);
+  // console handle for scrubbing the loop: __motion.seek(0..1)
+  window.__motion = { seek: v => { u = v; renderHole(); }, seekScale: v => { scP = v; renderScale(); },
+    // pose a spinning layer at an angle (degrees): __motion.spinAt('stack-layer-3', 45)
+    spinAt: (id, deg) => { for (const h of HOVER) { const sp = h.byId[id]; if (sp && sp.spin) { sp.spin.a = sp.spin.target = deg * Math.PI / 180; if (deg % 90) sp.spin.draw(sp.layer.blur); else sp.spin.restore(sp.layer.blur); } } } };
+})();
+</script>
